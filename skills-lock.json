@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "changelog": {
+      "source": "pavelsimo/skills",
+      "sourceType": "github",
+      "skillPath": "skills/changelog/SKILL.md",
+      "computedHash": "5e272e9265da07da1e8e7a8989e5a2fd9080631e0f94b65488891304cce3be97"
+    },
+    "commit": {
+      "source": "pavelsimo/skills",
+      "sourceType": "github",
+      "skillPath": "skills/commit/SKILL.md",
+      "computedHash": "0948dcb099a8a1c4e50aa4e0af0ca152e16ca86b373cbae46c0f3fc0fa591a81"
+    },
+    "create-web": {
+      "source": "pavelsimo/skills",
+      "sourceType": "github",
+      "skillPath": "skills/create-web/SKILL.md",
+      "computedHash": "9f81707ccdcc2990add28028d0dcc4c96f60985d65f9c2ae5c51d83fe5b3c85f"
+    },
+    "release": {
+      "source": "pavelsimo/skills",
+      "sourceType": "github",
+      "skillPath": "skills/release/SKILL.md",
+      "computedHash": "4e22b686b3d34b271901c29937f72fb521ce0afbca9645dd21b1a74ca2a87292"
+    }
+  }
+}

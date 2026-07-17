@@ -1,0 +1,7 @@
+pre-commit:
+  commands:
+    rubocop:
+      run: bundle exec rubocop --fail-fast {staged_files}
+      glob: "*.rb"
+    test-models:
+      run: bin/rails test test/models

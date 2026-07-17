@@ -1,0 +1,11 @@
+class MagicLinkCode < ApplicationRecord
+  belongs_to :identity
+
+  scope :active, -> { where(expires_at: Time.current..) }
+
+  before_create { self.value = SecureRandom.random_number(999_999).to_s.rjust(6, "0") }
+
+  def expired?
+    expires_at < Time.current
+  end
+end

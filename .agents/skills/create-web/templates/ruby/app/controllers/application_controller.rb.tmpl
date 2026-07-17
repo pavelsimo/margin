@@ -1,0 +1,8 @@
+class ApplicationController < ActionController::Base
+  include Authentication
+
+  before_action :require_authentication
+
+  # Allow CSRF protection bypass for Turbo requests with session token
+  protect_from_forgery with: :exception
+end

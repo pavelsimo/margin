@@ -1,0 +1,51 @@
+# Name of your application — used to uniquely configure containers.
+service: {{APP_NAME}}
+
+# Name of the container image.
+image: {{GITHUB_USER}}/{{APP_NAME}}
+
+# Deploy to these servers.
+servers:
+  web:
+    - YOUR_SERVER_IP    # replace with your server's IP address
+
+# Enable SSL auto certification via Let's Encrypt.
+# proxy:
+#   ssl: true
+#   host: your-domain.com   # replace with your domain name
+
+# Container registry (GitHub Container Registry by default).
+registry:
+  server: ghcr.io
+  username: {{GITHUB_USER}}
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+# Inject ENV variables into containers (secrets come from .kamal/secrets).
+env:
+  secret:
+    - RAILS_MASTER_KEY
+  clear:
+    # Run Solid Queue inside Puma for single-server deployments.
+    SOLID_QUEUE_IN_PUMA: true
+
+    # JOB_CONCURRENCY: 3
+    # WEB_CONCURRENCY: 2
+    # RAILS_LOG_LEVEL: debug
+
+# Persistent storage volume for SQLite databases and uploaded files.
+volumes:
+  - {{APP_MODULE}}_storage:/rails/storage
+
+# Bridge assets between versions to avoid 404s on in-flight requests.
+asset_path: /rails/public/assets
+
+builder:
+  arch: amd64
+
+# Useful command aliases
+aliases:
+  console: app exec --interactive --reuse "bin/rails console"
+  shell: app exec --interactive --reuse "bash"
+  logs: app logs -f
+  dbc: app exec --interactive --reuse "bin/rails dbconsole --include-password"

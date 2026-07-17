@@ -1,0 +1,18 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <h1 class="auth-title">Sign in to {{APP_NAME_HUMAN}}</h1>
+
+    <%= form_with url: session_path, class: "auth-form" do |f| %>
+      <div class="field">
+        <%= f.label :email, "Email address" %>
+        <%= f.email_field :email,
+              autofocus: true,
+              autocomplete: "email",
+              placeholder: "you@example.com",
+              required: true %>
+      </div>
+
+      <%= f.submit "Send verification code", class: "btn btn--primary" %>
+    <% end %>
+  </div>
+</div>

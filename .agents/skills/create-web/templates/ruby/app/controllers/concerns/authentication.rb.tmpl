@@ -1,0 +1,76 @@
+module Authentication
+  extend ActiveSupport::Concern
+
+  included do
+    before_action :resume_session
+    helper_method :authenticated?, :current_user, :current_session
+  end
+
+  class_methods do
+    def allow_unauthenticated_access(**options)
+      skip_before_action :require_authentication, **options
+    end
+
+    def require_unauthenticated_access(**options)
+      before_action :redirect_authenticated_user, **options
+    end
+  end
+
+  private
+
+  def authenticated?
+    current_session.present?
+  end
+
+  def current_session
+    Current.session
+  end
+
+  def current_user
+    Current.user
+  end
+
+  def resume_session
+    Current.session = find_session_by_cookie
+  end
+
+  def require_authentication
+    request_authentication unless authenticated?
+  end
+
+  def request_authentication
+    session[:return_to_after_authenticating] = request.url
+    redirect_to new_session_path
+  end
+
+  def redirect_authenticated_user
+    redirect_to root_path if authenticated?
+  end
+
+  def find_session_by_cookie
+    token = cookies.signed[:session_token]
+    return unless token
+
+    Session.authenticate_by_token(token)&.tap do |s|
+      Current.session = s
+    end
+  end
+
+  def start_new_session_for(identity)
+    user = identity.users.first || identity.users.create!(
+      display_name: identity.email.split("@").first.tr("._-", " ").split.map(&:capitalize).join(" ")
+    )
+    new_session = identity.sessions.create!(user: user)
+    cookies.signed.permanent[:session_token] = {
+      value: new_session.token_digest,
+      httponly: true,
+      same_site: :lax
+    }
+    Current.session = new_session
+  end
+
+  def terminate_session
+    Current.session&.destroy
+    cookies.delete(:session_token)
+  end
+end

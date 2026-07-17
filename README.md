@@ -1,0 +1,49 @@
+# Margin
+
+Read research papers with AI assistance via your Claude or Codex subscription
+
+## Setup
+
+```bash
+git clone https://github.com/pavelsimo/margin
+cd margin
+make setup
+make dev
+```
+
+Visit [http://localhost:3000](http://localhost:3000).
+
+## Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Language | Python 3.13 |
+| Frontend | Reflex (pure-Python UI, compiles to React) |
+| API | FastAPI mounted into the Reflex backend (`api_transformer`) |
+| Database | SQLite with WAL mode (SQLModel + Alembic) |
+| Auth | Passwordless magic links |
+| Tooling | uv · ruff · mypy · pytest · lefthook |
+| Deploy | Kamal (single container: Caddy + Reflex backend) |
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `make dev` | Start development server |
+| `make test` | Run tests with coverage |
+| `make ci` | Full CI suite (format check + lint + tests) |
+| `make lint` | Run ruff + mypy |
+| `make fmt` | Auto-format and fix lint offenses |
+| `make db-makemigrations` | Generate a migration from model changes |
+| `make db-migrate` | Apply pending migrations |
+| `make db-reset` | Recreate the database and seed |
+| `make deploy` | Deploy to production |
+
+## Documentation
+
+- [Development guide](docs/development.md) — local setup, workflow, architecture overview
+- [Deployment guide](docs/deployment.md) — Kamal setup and environment variables
+
+## License
+
+MIT © 2026 pavelsimo

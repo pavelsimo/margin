@@ -1,0 +1,107 @@
+from datetime import timedelta
+
+import pytest
+import sqlmodel
+from fastapi.testclient import TestClient
+
+from {{APP_MODULE}} import auth, mailer
+from {{APP_MODULE}}.api import api
+from {{APP_MODULE}}.models import CODE_RATE_LIMIT, User, utcnow
+
+
+def test_normalize_email() -> None:
+    assert auth.normalize_email("  Dev@Example.COM ") == "dev@example.com"
+
+
+def test_valid_email() -> None:
+    assert auth.valid_email("dev@example.com")
+    assert not auth.valid_email("not-an-email")
+    assert not auth.valid_email("")
+
+
+def test_find_or_create_identity_is_idempotent(db: sqlmodel.Session) -> None:
+    first = auth.find_or_create_identity(db, "  Dev@Example.com")
+    second = auth.find_or_create_identity(db, "dev@example.com")
+    assert first.id == second.id
+    assert first.email == "dev@example.com"
+
+
+def test_issue_code_creates_six_digit_code(db: sqlmodel.Session) -> None:
+    identity = auth.find_or_create_identity(db, "dev@example.com")
+    code = auth.issue_code(db, identity)
+    assert code is not None
+    assert len(code.value) == 6
+    assert code.value.isdigit()
+    assert code.expires_at > utcnow()
+
+
+def test_issue_code_rate_limited(db: sqlmodel.Session) -> None:
+    identity = auth.find_or_create_identity(db, "dev@example.com")
+    for _ in range(CODE_RATE_LIMIT):
+        assert auth.issue_code(db, identity) is not None
+    assert auth.issue_code(db, identity) is None
+
+
+def test_verify_code_creates_user_and_session(db: sqlmodel.Session) -> None:
+    identity = auth.find_or_create_identity(db, "dev@example.com")
+    code = auth.issue_code(db, identity)
+    assert code is not None
+    session = auth.verify_code(db, "dev@example.com", code.value)
+    assert session is not None
+    assert len(session.token) == 64
+    user = db.get(User, session.user_id)
+    assert user is not None
+    assert user.display_name == "dev"
+
+
+def test_verify_code_rejects_wrong_code(db: sqlmodel.Session) -> None:
+    identity = auth.find_or_create_identity(db, "dev@example.com")
+    code = auth.issue_code(db, identity)
+    assert code is not None
+    wrong = "000000" if code.value != "000000" else "111111"
+    assert auth.verify_code(db, "dev@example.com", wrong) is None
+
+
+def test_verify_code_rejects_expired_code(db: sqlmodel.Session) -> None:
+    identity = auth.find_or_create_identity(db, "dev@example.com")
+    code = auth.issue_code(db, identity)
+    assert code is not None
+    code.expires_at = utcnow() - timedelta(minutes=1)
+    db.add(code)
+    db.commit()
+    assert auth.verify_code(db, "dev@example.com", code.value) is None
+
+
+def test_verify_code_is_single_use(db: sqlmodel.Session) -> None:
+    identity = auth.find_or_create_identity(db, "dev@example.com")
+    code = auth.issue_code(db, identity)
+    assert code is not None
+    assert auth.verify_code(db, "dev@example.com", code.value) is not None
+    assert auth.verify_code(db, "dev@example.com", code.value) is None
+
+
+def test_verify_code_unknown_email(db: sqlmodel.Session) -> None:
+    assert auth.verify_code(db, "nobody@example.com", "123456") is None
+
+
+def test_find_session_by_token_empty(db: sqlmodel.Session) -> None:
+    assert auth.find_session_by_token(db, "") is None
+
+
+def test_terminate_session(db: sqlmodel.Session) -> None:
+    identity = auth.find_or_create_identity(db, "dev@example.com")
+    code = auth.issue_code(db, identity)
+    assert code is not None
+    session = auth.verify_code(db, "dev@example.com", code.value)
+    assert session is not None
+    auth.terminate_session(db, session.token)
+    assert auth.find_session_by_token(db, session.token) is None
+
+
+def test_mailer_logs_code_without_smtp(caplog: pytest.LogCaptureFixture) -> None:
+    mailer.send_magic_link_code("dev@example.com", "123456")
+    assert "123456" in caplog.text
+
+
+def test_up_endpoint() -> None:
+    assert TestClient(api).get("/up").json() == {"status": "ok"}

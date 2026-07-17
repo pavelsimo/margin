@@ -1,0 +1,15 @@
+class Identity < ApplicationRecord
+  has_many :sessions, dependent: :destroy
+  has_many :users, dependent: :destroy
+  has_many :magic_link_codes, dependent: :destroy
+
+  normalizes :email, with: ->(e) { e.strip.downcase }
+
+  validates :email, presence: true,
+                    uniqueness: { case_sensitive: false },
+                    format: { with: URI::MailTo::EMAIL_REGEXP }
+
+  def self.find_or_create_by_email(email)
+    find_or_create_by!(email: email.strip.downcase)
+  end
+end

@@ -1,0 +1,111 @@
+# Development
+
+## Prerequisites
+
+- [uv](https://docs.astral.sh/uv/) — installs Python 3.13 automatically
+- That's it. Reflex downloads its own JavaScript runtime on first run.
+
+## Setup
+
+```bash
+git clone https://github.com/pavelsimo/margin
+cd margin
+make setup
+```
+
+The setup script installs dependencies, migrates and seeds the database, and installs git pre-commit hooks.
+
+## Start the development server
+
+```bash
+make dev
+```
+
+Visit [http://localhost:3000](http://localhost:3000). The Reflex backend (websocket state + FastAPI routes) runs on port 8000.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `make dev` | Start development server (frontend :3000, backend :8000) |
+| `make test` | Run all tests with coverage |
+| `make ci` | Full CI: format check + lint + tests |
+| `make lint` | ruff check + mypy |
+| `make fmt` | Auto-format and fix lint offenses |
+| `make db-makemigrations` | Generate a migration from model changes |
+| `make db-migrate` | Apply pending migrations |
+| `make db-reset` | Delete the database, re-migrate, re-seed |
+| `make seed` | Re-run seed data |
+
+## Authentication in development
+
+Magic link verification codes are logged to the backend console — no email server needed:
+
+```
+[mailer] Magic link code for dev@example.com: 123456
+```
+
+The seed user is `dev@example.com`. Sign in at [http://localhost:3000/sign-in](http://localhost:3000/sign-in).
+
+## Database
+
+SQLite with WAL mode, tuned in `margin/db.py`:
+
+- `journal_mode=WAL` — concurrent readers alongside a single writer
+- `busy_timeout=5000` — concurrent writes queue for up to 5s instead of erroring
+- `synchronous=NORMAL` — safe with WAL, much faster than FULL
+- `foreign_keys=ON` — referential integrity enforced
+
+The development database is `margin.db` in the project root (gitignored, along with its `-wal`/`-shm` files).
+
+## Architecture overview
+
+| Concern | Convention |
+|---------|-----------|
+| Business logic | Plain functions taking a `sqlmodel.Session` — never service classes |
+| Reflex state | Thin orchestrators: open session, call domain function, redirect |
+| State | Separate records (`Closure`, `Publication`) not boolean columns |
+| Frontend | Native Reflex components — no custom React or JavaScript |
+| API | FastAPI endpoints in `api.py` for external clients |
+| Auth | Magic links — no auth library |
+| Tests | pytest + plain fixtures — no factory libraries |
+
+See `AGENTS.md` for the complete set of conventions.
+
+## Adding features
+
+**New model** — add a class to `margin/models.py`:
+
+```python
+class Post(sqlmodel.SQLModel, table=True):
+    id: int | None = sqlmodel.Field(default=None, primary_key=True)
+    user_id: int = sqlmodel.Field(foreign_key="user.id", index=True)
+    title: str
+    body: str
+    created_at: datetime = sqlmodel.Field(default_factory=utcnow)
+```
+
+Then generate and apply the migration:
+
+```bash
+make db-makemigrations m="create posts"
+make db-migrate
+```
+
+**New page** — add a file under `margin/pages/` and register it in `pages/__init__.py`:
+
+```python
+@rx.page(route="/posts", title="Posts", on_load=AuthState.check_auth)
+def posts() -> rx.Component:
+    ...
+```
+
+**State as a record (37signals pattern)** — "close a post" is a `Closure` row, not a `closed` boolean:
+
+```python
+class Closure(sqlmodel.SQLModel, table=True):
+    id: int | None = sqlmodel.Field(default=None, primary_key=True)
+    post_id: int = sqlmodel.Field(foreign_key="post.id", index=True, unique=True)
+    user_id: int = sqlmodel.Field(foreign_key="user.id", index=True)
+    created_at: datetime = sqlmodel.Field(default_factory=utcnow)
+```

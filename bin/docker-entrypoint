@@ -1,0 +1,11 @@
+#!/bin/sh -e
+
+cd /app
+
+# Apply pending migrations before serving traffic.
+alembic upgrade head
+
+# Caddy serves the exported frontend and proxies backend routes.
+caddy start --config /etc/caddy/Caddyfile --adapter caddyfile
+
+exec reflex run --env prod --backend-only

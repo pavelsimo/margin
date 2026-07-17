@@ -1,0 +1,33 @@
+require "test_helper"
+
+class SessionsControllerTest < ActionDispatch::IntegrationTest
+  test "GET /session/new renders login form" do
+    get new_session_url
+    assert_response :success
+  end
+
+  test "POST /session creates a magic link code and redirects to verify" do
+    assert_difference "MagicLinkCode.count" do
+      post session_url, params: { email: "new@example.com" }
+    end
+    assert_redirected_to verify_session_url
+  end
+
+  test "POST /session with existing identity reuses it" do
+    assert_difference "Identity.count", 0 do
+      assert_difference "MagicLinkCode.count" do
+        post session_url, params: { email: identities(:alice).email }
+      end
+    end
+  end
+
+  test "GET /session/verify redirects to new when no identity in session" do
+    get verify_session_url
+    assert_redirected_to new_session_url
+  end
+
+  test "DELETE /session signs out and redirects to login" do
+    delete session_url
+    assert_redirected_to new_session_url
+  end
+end

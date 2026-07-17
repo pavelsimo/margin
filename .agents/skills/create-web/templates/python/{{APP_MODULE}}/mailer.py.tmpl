@@ -1,0 +1,29 @@
+"""Outbound email. Logs codes to the console when SMTP is not configured (development)."""
+
+import logging
+import smtplib
+from email.message import EmailMessage
+
+from . import settings
+
+logger = logging.getLogger(__name__)
+
+
+def send_magic_link_code(email: str, code: str) -> None:
+    if not settings.SMTP_ADDRESS:
+        logger.warning("[mailer] Magic link code for %s: %s", email, code)
+        return
+    message = EmailMessage()
+    message["From"] = settings.MAILER_FROM_ADDRESS
+    message["To"] = email
+    message["Subject"] = f"Your {{APP_NAME_HUMAN}} verification code: {code}"
+    message.set_content(
+        f"Enter this code to sign in to {{APP_NAME_HUMAN}}:\n\n"
+        f"    {code}\n\n"
+        "The code expires in 15 minutes. If you didn't request it, ignore this email."
+    )
+    with smtplib.SMTP(settings.SMTP_ADDRESS, settings.SMTP_PORT) as smtp:
+        smtp.starttls()
+        if settings.SMTP_USERNAME:
+            smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+        smtp.send_message(message)

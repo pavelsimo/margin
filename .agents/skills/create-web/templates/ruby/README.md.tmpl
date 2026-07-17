@@ -1,0 +1,49 @@
+# {{APP_NAME_HUMAN}}
+
+{{DESCRIPTION}}
+
+## Setup
+
+```bash
+git clone https://github.com/{{GITHUB_USER}}/{{APP_NAME}}
+cd {{APP_NAME}}
+bin/setup
+bin/dev
+```
+
+Visit [http://localhost:3000](http://localhost:3000).
+
+## Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Language | Ruby {{RUBY_VERSION}} / Rails 8.x |
+| Frontend | Hotwire (Turbo + Stimulus) + importmap-rails |
+| CSS | Native CSS with cascade layers |
+| Auth | Passwordless magic links |
+| Jobs | Solid Queue |
+| Cache | Solid Cache |
+| WebSockets | Solid Cable |
+| Deploy | Kamal |
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `bin/dev` | Start development server |
+| `bin/rails test` | Run tests |
+| `bin/ci` | Full CI suite (lint + tests) |
+| `make lint` | Run rubocop |
+| `make lint-fix` | Auto-fix lint offenses |
+| `make deploy` | Deploy to production |
+| `bin/rails routes` | List all routes |
+| `bin/rails console` | Open Rails console |
+
+## Documentation
+
+- [Development guide](docs/development.md) — local setup, workflow, architecture overview
+- [Deployment guide](docs/deployment.md) — Kamal setup and environment variables
+
+## License
+
+MIT © {{YEAR}} {{GITHUB_USER}}

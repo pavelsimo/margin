@@ -1,0 +1,193 @@
+@layer base {
+  :root {
+    /* OKLCH color palette — perceptually uniform, dark mode friendly */
+    --color-primary:        oklch(52% 0.19 252deg);
+    --color-primary-hover:  oklch(45% 0.19 252deg);
+    --color-text:           oklch(18% 0.02 252deg);
+    --color-text-muted:     oklch(45% 0.02 252deg);
+    --color-background:     oklch(98% 0.005 252deg);
+    --color-surface:        oklch(100% 0 0);
+    --color-border:         oklch(87% 0.01 252deg);
+    --color-danger:         oklch(52% 0.2 25deg);
+    --color-success:        oklch(52% 0.15 145deg);
+
+    /* Spacing scale */
+    --space-1:  0.25rem;
+    --space-2:  0.5rem;
+    --space-3:  0.75rem;
+    --space-4:  1rem;
+    --space-5:  1.25rem;
+    --space-6:  1.5rem;
+    --space-8:  2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+
+    /* Typography */
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, monospace;
+    --text-sm:   0.875rem;
+    --text-base: 1rem;
+    --text-lg:   1.125rem;
+    --text-xl:   1.25rem;
+    --text-2xl:  1.5rem;
+    --text-3xl:  1.875rem;
+
+    /* Border radius */
+    --radius-sm: 0.25rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px oklch(0% 0 0 / 0.07), 0 2px 4px -2px oklch(0% 0 0 / 0.05);
+    --shadow-lg: 0 10px 15px -3px oklch(0% 0 0 / 0.08), 0 4px 6px -4px oklch(0% 0 0 / 0.05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      /* Flip OKLCH lightness for dark mode */
+      --color-primary:        oklch(65% 0.19 252deg);
+      --color-primary-hover:  oklch(72% 0.19 252deg);
+      --color-text:           oklch(93% 0.01 252deg);
+      --color-text-muted:     oklch(65% 0.02 252deg);
+      --color-background:     oklch(11% 0.01 252deg);
+      --color-surface:        oklch(16% 0.01 252deg);
+      --color-border:         oklch(28% 0.01 252deg);
+    }
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    color: var(--color-text);
+    background-color: var(--color-background);
+    line-height: 1.5;
+  }
+
+  /* Auth layout */
+  .auth-container {
+    display: grid;
+    place-items: center;
+    min-block-size: 100dvh;
+    padding: var(--space-4);
+  }
+
+  .auth-card {
+    width: 100%;
+    max-inline-size: 420px;
+    padding: var(--space-8);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .auth-title {
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--color-text);
+    margin-block-end: var(--space-6);
+  }
+
+  .auth-subtitle {
+    color: var(--color-text-muted);
+    margin-block-end: var(--space-6);
+  }
+
+  .auth-footer {
+    margin-block-start: var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+
+  /* Form fields */
+  .auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .field label {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-text);
+  }
+
+  .field input {
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    font-size: var(--text-base);
+    transition: border-color 0.15s, box-shadow 0.15s;
+
+    &:focus-visible {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary), transparent 80%);
+      outline: none;
+    }
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-3) var(--space-6);
+    border-radius: var(--radius-md);
+    font-size: var(--text-base);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s, opacity 0.15s;
+    text-decoration: none;
+    border: none;
+  }
+
+  .btn--primary {
+    background: var(--color-primary);
+    color: oklch(100% 0 0);
+
+    &:hover {
+      background: var(--color-primary-hover);
+    }
+
+    &:active {
+      opacity: 0.9;
+    }
+  }
+
+  /* Flash messages */
+  .flash {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    margin-block-end: var(--space-2);
+    font-size: var(--text-sm);
+
+    @starting-style {
+      opacity: 0;
+      translate: 0 -4px;
+    }
+
+    transition: opacity 0.2s, translate 0.2s;
+  }
+
+  .flash--notice {
+    background: color-mix(in oklch, var(--color-success), transparent 85%);
+    color: color-mix(in oklch, var(--color-success), var(--color-text) 30%);
+  }
+
+  .flash--alert {
+    background: color-mix(in oklch, var(--color-danger), transparent 85%);
+    color: color-mix(in oklch, var(--color-danger), var(--color-text) 30%);
+  }
+}

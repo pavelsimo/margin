@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install markdownlint
+        run: npm install -g markdownlint-cli
+
+      - name: Lint Markdown
+        run: |
+          markdownlint SKILL.md README.md CHANGELOG.md \
+            --config .markdownlint.json || true
+
+      - name: Validate SKILL.md frontmatter
+        run: |
+          python3 - <<'EOF'
+          import re, sys
+          with open("SKILL.md") as f:
+              content = f.read()
+          assert content.startswith("---"), "SKILL.md must start with YAML frontmatter"
+          end = content.index("---", 3)
+          fm = content[3:end]
+          assert "name:" in fm, "frontmatter must contain 'name:'"
+          assert "description:" in fm, "frontmatter must contain 'description:'"
+          assert "trigger:" in fm, "frontmatter must contain 'trigger:'"
+          print("SKILL.md frontmatter OK")
+          EOF
+
+      - name: Validate template files
+        run: |
+          python3 - <<'EOF'
+          import os, sys
+          required_files = [
+              # Skill-level files
+              "templates/ruby/Gemfile.tmpl",
+              "templates/ruby/.ruby-version.tmpl",
+              "templates/ruby/.rubocop.yml",
+              "templates/ruby/.lefthook.yml",
+              "templates/ruby/Makefile",
+              "templates/ruby/Dockerfile.tmpl",
+              "templates/ruby/AGENTS.md.tmpl",
+              "templates/ruby/Rakefile",
+              # Critical Rails boot files
+              "templates/ruby/config/boot.rb",
+              "templates/ruby/config/environment.rb",
+              "templates/ruby/config.ru",
+              # App models
+              "templates/ruby/app/models/application_record.rb.tmpl",
+              "templates/ruby/app/models/current.rb.tmpl",
+              "templates/ruby/app/models/identity.rb.tmpl",
+              "templates/ruby/app/models/session.rb.tmpl",
+              "templates/ruby/app/models/user.rb.tmpl",
+              # App controllers
+              "templates/ruby/app/controllers/application_controller.rb.tmpl",
+              "templates/ruby/app/controllers/concerns/authentication.rb.tmpl",
+              "templates/ruby/app/controllers/sessions_controller.rb.tmpl",
+              # Config
+              "templates/ruby/config/application.rb.tmpl",
+              "templates/ruby/config/routes.rb.tmpl",
+              "templates/ruby/config/database.yml.tmpl",
+              "templates/ruby/config/deploy.yml.tmpl",
+              "templates/ruby/config/puma.rb.tmpl",
+              "templates/ruby/config/ci.rb",
+              # CI/CD
+              "templates/ruby/.github/workflows/ci.yml",
+              "templates/ruby/.github/workflows/deploy.yml",
+              # Python template
+              "templates/python/pyproject.toml.tmpl",
+              "templates/python/rxconfig.py.tmpl",
+              "templates/python/.python-version.tmpl",
+              "templates/python/.lefthook.yml",
+              "templates/python/Makefile.tmpl",
+              "templates/python/Dockerfile.tmpl",
+              "templates/python/Caddyfile",
+              "templates/python/AGENTS.md.tmpl",
+              "templates/python/alembic.ini",
+              "templates/python/alembic/env.py.tmpl",
+              "templates/python/alembic/script.py.mako",
+              "templates/python/bin/docker-entrypoint",
+              "templates/python/config/deploy.yml.tmpl",
+              "templates/python/{{APP_MODULE}}/{{APP_MODULE}}.py.tmpl",
+              "templates/python/{{APP_MODULE}}/api.py.tmpl",
+              "templates/python/{{APP_MODULE}}/auth.py",
+              "templates/python/{{APP_MODULE}}/db.py.tmpl",
+              "templates/python/{{APP_MODULE}}/models.py",
+              "templates/python/{{APP_MODULE}}/state.py",
+              "templates/python/{{APP_MODULE}}/mailer.py.tmpl",
+              "templates/python/tests/conftest.py.tmpl",
+              "templates/python/tests/test_auth.py.tmpl",
+              "templates/python/.github/workflows/ci.yml",
+              "templates/python/.github/workflows/deploy.yml",
+          ]
+          errors = []
+          for f in required_files:
+              if not os.path.exists(f):
+                  errors.append(f"missing: {f}")
+          if errors:
+              print("Errors:\n" + "\n".join(errors))
+              sys.exit(1)
+          print(f"All {len(required_files)} required template files present")
+
+          # Verify no raw placeholders remain in non-.tmpl files
+          flagged = []
+          for template, ext in (("templates/ruby", ".rb"), ("templates/python", ".py")):
+              for root, dirs, files in os.walk(template):
+                  for fname in files:
+                      if fname.endswith(ext) and not fname.endswith(ext + ".tmpl"):
+                          path = os.path.join(root, fname)
+                          text = open(path).read()
+                          if "{{" in text:
+                              flagged.append(path)
+          if flagged:
+              print("WARNING: source files contain {{ placeholders (should be .tmpl):")
+              for p in flagged:
+                  print(f"  {p}")
+          EOF

@@ -1,0 +1,20 @@
+"""Home page — requires authentication."""
+
+import reflex as rx
+
+from ..state import AuthState
+
+
+@rx.page(route="/", title="{{APP_NAME_HUMAN}}", on_load=AuthState.check_auth)
+def index() -> rx.Component:
+    return rx.container(
+        rx.vstack(
+            rx.heading("{{APP_NAME_HUMAN}}", size="8"),
+            rx.text("{{DESCRIPTION}}"),
+            rx.text("Signed in as ", rx.text.strong(AuthState.display_name)),
+            rx.button("Sign out", on_click=AuthState.sign_out, variant="soft"),
+            spacing="4",
+            padding_top="4em",
+        ),
+        size="2",
+    )

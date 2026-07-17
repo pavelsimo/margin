@@ -1,0 +1,54 @@
+# Name of your application — used to uniquely configure containers.
+service: {{APP_NAME}}
+
+# Name of the container image.
+image: {{GITHUB_USER}}/{{APP_NAME}}
+
+# Deploy to these servers.
+servers:
+  web:
+    - YOUR_SERVER_IP    # replace with your server's IP address
+
+# Caddy inside the container serves the app on port 8080.
+proxy:
+  app_port: 8080
+  healthcheck:
+    path: /up
+  # Enable SSL auto certification via Let's Encrypt:
+  # ssl: true
+  # host: your-domain.com   # replace with your domain name
+
+# Container registry (GitHub Container Registry by default).
+registry:
+  server: ghcr.io
+  username: {{GITHUB_USER}}
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+  args:
+    # Public URL baked into the static frontend at build time (websocket + API).
+    # Change to https://your-domain.com once SSL is enabled.
+    API_URL: http://YOUR_SERVER_IP:8080
+
+# Inject ENV variables into containers (secrets come from .kamal/secrets).
+env:
+  clear:
+    DATABASE_URL: sqlite:////data/{{APP_MODULE}}.db
+    MAILER_FROM_ADDRESS: noreply@example.com
+    # SMTP_ADDRESS: smtp.example.com
+    # SMTP_PORT: "587"
+  secret:
+    - SMTP_USERNAME
+    - SMTP_PASSWORD
+
+# Persistent storage volume for the SQLite database (WAL files live alongside it).
+volumes:
+  - {{APP_MODULE}}_data:/data
+
+# Useful command aliases
+aliases:
+  shell: app exec --interactive --reuse "bash"
+  logs: app logs -f
+  dbc: app exec --interactive --reuse "sqlite3 /data/{{APP_MODULE}}.db"

@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Geist',system-ui,sans-serif;-webkit-font-smoothing:antialiased;color-scheme:dark;
+--bg:#0a0a0a;--surface:#141414;--raise:#1c1c1c;--border:#272725;--border2:#2e2e2c;--borderHover:#403f3d;--hair:#1f1f1e;--seg:#1d1d1c;--segOn:#32312f;--ink:#ededec;--ink2:#d2d2d0;--mid:#a3a3a1;--muted:#8a8a88;--muted2:#6e6e6c;--faint:#484846;
+--inv:#ededec;--invText:#0f0f0f;--invHover:#fff;--invMuted:#3a3a3a;--invDiv:rgba(0,0,0,.18);--invHoverBg:rgba(0,0,0,.08);
+--accent:oklch(0.72 0.17 150);--accentMid:oklch(0.55 0.11 150);--accentText:oklch(0.8 0.13 150);--accentTint:oklch(0.27 0.05 150);--accentTint2:oklch(0.4 0.08 150);--accentFaint:oklch(0.21 0.03 150);--focusRing:oklch(0.35 0.08 150);
+--stripe1:#181817;--stripe2:#1e1e1d;
+--tagRobBg:oklch(0.27 0.04 180);--tagRobFg:oklch(0.78 0.08 180);--tagThyBg:oklch(0.26 0.05 340);--tagThyFg:oklch(0.8 0.09 340);--tagSysBg:oklch(0.26 0.04 80);--tagSysFg:oklch(0.8 0.08 80)}
+body.light{color-scheme:light;
+--bg:#fafafa;--surface:#fff;--raise:#fafafa;--border:#e8e8e6;--border2:#e4e4e2;--borderHover:#cfcfcd;--hair:#efefed;--seg:#f4f4f2;--segOn:#fff;--ink:#161616;--ink2:#1d1d1d;--mid:#555;--muted:#8a8a88;--muted2:#a0a09e;--faint:#d0d0ce;
+--inv:#141414;--invText:#fff;--invHover:#333;--invMuted:#e8e8e8;--invDiv:rgba(255,255,255,.18);--invHoverBg:rgba(255,255,255,.12);
+--accent:oklch(0.52 0.14 150);--accentMid:oklch(0.62 0.12 150);--accentText:oklch(0.42 0.11 150);--accentTint:oklch(0.95 0.03 150);--accentTint2:oklch(0.88 0.06 150);--accentFaint:oklch(0.975 0.01 150);--focusRing:oklch(0.92 0.05 150);
+--stripe1:#f6f6f4;--stripe2:#efefed;
+--tagRobBg:oklch(0.95 0.03 180);--tagRobFg:oklch(0.4 0.1 180);--tagThyBg:oklch(0.95 0.03 340);--tagThyFg:oklch(0.45 0.15 340);--tagSysBg:oklch(0.95 0.04 80);--tagSysFg:oklch(0.45 0.1 80)}
+a{color:var(--accent);text-decoration:none}a:hover{color:var(--accentText);text-decoration:underline}
+::selection{background:var(--focusRing)}
+@keyframes mblink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@keyframes mfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+input,select,button,textarea{font-family:inherit}
+input:focus,textarea:focus{outline:none}
+</style>
+</helmet>
+<div style="height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:14px">
+
+<sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
+<div data-seltb="1" onMouseDown="{{ tbDown }}" style="{{ selStyle }}">
+<div style="display:flex;align-items:center;gap:2px;background:var(--inv);border-radius:8px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.25);animation:mfade .12s ease">
+<button onClick="{{ askSel }}" style="display:flex;align-items:center;gap:6px;background:var(--accent);color:var(--invText);border:none;border-radius:5px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer">✦ Ask</button>
+<div style="width:1px;height:16px;background:var(--invDiv);margin:0 3px"></div>
+<button onClick="{{ explainSel }}" style="background:none;color:var(--invMuted);border:none;border-radius:5px;padding:6px 9px;font-size:12.5px;cursor:pointer" style-hover="background:var(--invHoverBg)">Explain</button>
+<button onClick="{{ summarizeSel }}" style="background:none;color:var(--invMuted);border:none;border-radius:5px;padding:6px 9px;font-size:12.5px;cursor:pointer" style-hover="background:var(--invHoverBg)">Summarize</button>
+<button onClick="{{ eli5Sel }}" style="background:none;color:var(--invMuted);border:none;border-radius:5px;padding:6px 9px;font-size:12.5px;cursor:pointer" style-hover="background:var(--invHoverBg)">ELI12</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+<div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:60;background:var(--inv);color:var(--invText);font-size:13px;padding:9px 16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);animation:mfade .15s ease">{{ toast }}</div>
+</sc-if>
+
+<header style="height:57px;flex:none;display:flex;align-items:center;gap:12px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border)">
+  <div onClick="{{ goLibrary }}" style="display:flex;align-items:center;gap:9px;cursor:pointer">
+    <div style="width:20px;height:20px;background:var(--accent);border-radius:5px;transform:rotate(45deg);display:flex;align-items:center;justify-content:center"><div style="width:7px;height:7px;background:#fefefe;border-radius:2px"></div></div>
+    <span style="font-size:15px;font-weight:600;letter-spacing:-.2px">Margin</span>
+  </div>
+  <span style="color:var(--faint);font-size:16px">/</span>
+  <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ true }}"><span style="font-size:13.5px;color:var(--mid)">Library</span></sc-if>
+  <sc-if value="{{ isReader }}" hint-placeholder-val="{{ false }}">
+    <span onClick="{{ goLibrary }}" style="font-size:13.5px;color:var(--mid);cursor:pointer" style-hover="color:var(--ink)">Library</span>
+    <span style="color:var(--faint);font-size:16px">/</span>
+    <span style="font-size:13.5px;color:var(--ink);font-weight:500;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ activeTitle }}</span>
+  </sc-if>
+  <div style="flex:1"></div>
+  <button onClick="{{ toggleTheme }}" title="Toggle theme" style="width:31px;height:31px;background:none;border:1px solid var(--border2);border-radius:7px;font-size:13px;color:var(--mid);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0" style-hover="border-color:var(--borderHover);color:var(--ink)">{{ themeIcon }}</button>
+  <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,oklch(0.72 0.14 150),oklch(0.55 0.12 210));border:1px solid var(--border2)"></div>
+</header>
+
+<sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ true }}">
+<div data-screen-label="Library" style="flex:1;overflow:auto">
+<div style="max-width:1060px;margin:0 auto;padding:52px 28px 72px">
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
+    <h1 style="margin:0;font-size:34px;font-weight:700;letter-spacing:-.9px">Library</h1>
+    <div style="flex:1"></div>
+    <button onClick="{{ openModal }}" style="background:var(--inv);color:var(--invText);border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:7px" style-hover="background:var(--invHover)">＋ Add paper</button>
+  </div>
+  <p style="margin:0 0 24px;max-width:660px;font-size:14px;line-height:1.6;color:var(--muted);text-wrap:pretty">Papers with an assistant that reads alongside you. Add a paper by link or PDF, open it, highlight any passage and ask — answers stay grounded in the page, the selection, or the whole paper.</p>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:22px;flex-wrap:wrap">
+    <div style="position:relative;display:flex;align-items:center">
+      <span style="position:absolute;left:11px;color:var(--muted2);font-size:13px">⌕</span>
+      <input value="{{ q }}" onChange="{{ onQ }}" placeholder="Search papers or tags…" style="width:280px;padding:8px 12px 8px 30px;border:1px solid var(--border2);border-radius:8px;font-size:13px;background:var(--surface);color:var(--ink)" style-focus="border-color:var(--accentMid);box-shadow:0 0 0 3px var(--focusRing)">
+    </div>
+    <div style="flex:1"></div>
+    <sc-for list="{{ filters }}" as="f" hint-placeholder-count="5">
+      <button onClick="{{ f.set }}" style="{{ f.style }}">{{ f.label }}</button>
+    </sc-for>
+  </div>
+  <p style="margin:0 0 10px;font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--muted2)">{{ countLabel }}</p>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px">
+    <sc-for list="{{ papersView }}" as="p" hint-placeholder-count="4">
+      <div onClick="{{ p.open }}" style="{{ p.rowStyle }}" style-hover="background:var(--raise)">
+        <span style="flex:none;width:26px;font-family:'Geist Mono',monospace;font-size:12px;color:var(--muted2)">{{ p.idx }}</span>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:14.5px;font-weight:600;letter-spacing:-.1px">{{ p.title }}</span>
+            <sc-if value="{{ p.isNew }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.5px;padding:2px 7px;border-radius:99px;background:var(--accent);color:var(--invText)">NEW</span></sc-if>
+            <sc-for list="{{ p.tags }}" as="t" hint-placeholder-count="2">
+              <span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--muted);border:1px solid var(--border2);border-radius:99px;padding:2.5px 9px;white-space:nowrap">{{ t }}</span>
+            </sc-for>
+          </div>
+          <div style="font-size:12.5px;color:var(--muted)">{{ p.authors }}</div>
+        </div>
+        <span style="flex:none;font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--accentText);border:1px solid var(--border2);border-radius:99px;padding:4px 12px;white-space:nowrap">{{ p.tag }}</span>
+        <span style="flex:none;width:58px;text-align:right;font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--muted2);white-space:nowrap">{{ p.pagesLabel }}</span>
+        <span style="flex:none;width:64px;text-align:right;font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--muted2);white-space:nowrap">{{ p.added }}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isReader }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Reader" style="flex:1;display:flex;min-height:0">
+
+  <div ref="{{ setPaperEl }}" onScroll="{{ onPaperScroll }}" style="flex:1;overflow:auto;position:relative">
+    <div data-paper="1" style="max-width:740px;margin:32px auto 20px;display:flex;flex-direction:column;gap:24px;font-family:'Source Serif 4',Georgia,serif;font-size:15.5px;line-height:1.68;color:var(--ink2)">
+
+      <div data-pg="1" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.03);padding:56px 64px">
+        <h1 style="font-size:26px;font-weight:600;line-height:1.3;letter-spacing:-.3px;text-align:center;margin:0 0 8px;text-wrap:pretty">{{ activeTitle }}</h1>
+        <p style="text-align:center;font-style:italic;font-size:15px;margin:0 0 22px;color:var(--mid)">Welcome the Era of One-shot Long-horizon Parsing</p>
+        <p style="text-align:center;font-size:14px;margin:0 0 6px">{{ activeAuthors }}</p>
+        <p style="text-align:center;font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--muted);margin:0 0 34px">{{ activeVenue }}</p>
+        <h2 style="font-size:15px;font-weight:600;text-align:center;margin:0 0 10px">Abstract</h2>
+        <p style="font-style:italic;font-size:14.5px;margin:0;text-align:justify">{{ activeAbstract }}</p>
+        <div style="margin:24px 0 0;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <div style="height:200px;background:repeating-linear-gradient(45deg,var(--stripe1),var(--stripe1) 10px,var(--stripe2) 10px,var(--stripe2) 20px);display:flex;align-items:center;justify-content:center"><span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--muted);background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:6px 12px">figure 1 — vanilla attention vs. R-SWA</span></div>
+          <p style="margin:0;padding:12px 16px;font-size:12.5px;line-height:1.5;color:var(--mid);border-top:1px solid var(--hair)"><strong>Figure 1</strong> — R-SWA at a glance: each new token sees every reference (visual) token plus only the last n = 128 output tokens, keeping the KV cache flat for the whole decode. Reference tokens never enter state transitions, so image features stay crisp — the failure mode of vanilla SWA.</p>
+        </div>
+        <p style="text-align:center;font-family:'Geist Mono',monospace;font-size:11px;color:var(--muted2);margin:40px 0 0">1</p>
+      </div>
+
+      <div data-pg="2" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.03);padding:56px 64px">
+        <h2 style="font-size:16.5px;font-weight:600;margin:0 0 12px">1 Introduction</h2>
+        <p style="margin:0 0 14px;text-align:justify">Humans handle long-horizon parsing with ease — copying out a book across hundreds of pages, or transcribing hours of audio — yet these are exactly the tasks where models break down. No current end-to-end OCR model parses even ten pages in one forward pass; documents are fed page-by-page in a loop, with memory wiped at every step. That loop is an external scheduler stitching together fragments of what should be one continuous process — a workaround, not intelligence.</p>
+        <p style="margin:0 0 14px;text-align:justify">The way people actually transcribe suggests a different attention pattern. A copyist never re-reads everything already written; they watch the source and glance at the last few characters to stay oriented. This is not full attention — the history is never fully consulted — and not linear attention either, since the source must not be blurred by recurrent state updates. R-SWA is built to match this natural flow. The contributions:</p>
+        <ul style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:10px">
+          <li style="text-align:justify"><strong>R-SWA</strong> — each token attends to all reference tokens (visual tokens and the prompt) plus a causal window over the preceding 128 output tokens, keeping the KV cache constant during inference.</li>
+          <li style="text-align:justify"><strong>Unlimited OCR</strong> — DeepSeek OCR with every decoder attention layer replaced by R-SWA: dozens of pages parsed in one pass, and 93% on OmniDocBench v1.5, 6 points above the baseline.</li>
+          <li style="text-align:justify"><strong>A first validation</strong> that reference-based, linear-cost attention is lossless for parsing — with ASR and translation as natural next applications.</li>
+        </ul>
+        <p style="text-align:center;font-family:'Geist Mono',monospace;font-size:11px;color:var(--muted2);margin:40px 0 0">2</p>
+      </div>
+
+      <div data-pg="3" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.03);padding:56px 64px">
+        <h2 style="font-size:16.5px;font-weight:600;margin:0 0 12px">2 Related Works</h2>
+        <p style="margin:0 0 14px;text-align:justify">Pipeline systems chain a layout detector with block-level recognizers, bridged by cropping and rectification heuristics; LLM decoders have modernized rather than replaced this recipe. End-to-end VLMs instead parse a whole page in a single forward pass, which raises the bar for the decoder but makes architectural progress directly transferable to general-purpose models.</p>
+        <p style="margin:0 0 14px;text-align:justify">Two components bound an end-to-end model: the encoder’s compression ratio, which sets prefill length, and the decoder’s KV cache — which in every current model grows with each output token. That growth is the bottleneck this work removes.</p>
+        <h2 style="font-size:16.5px;font-weight:600;margin:28px 0 12px">3 Methodology</h2>
+        <h3 style="font-size:14.5px;font-weight:600;margin:22px 0 10px">3.1 Long-horizon Parsing</h3>
+        <p style="margin:0 0 14px;text-align:justify">When copying a book by hand, attention rests on three things: the source, the last few written characters, and the next one to write. Nothing like a full transcript is held in mind — distant output fades away. This soft forgetting appears to be what keeps cognitive load flat over hours of transcription, and it is the behavior Unlimited OCR reproduces.</p>
+        <div style="margin:24px 0 0;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <div style="height:200px;background:repeating-linear-gradient(45deg,var(--stripe1),var(--stripe1) 10px,var(--stripe2) 10px,var(--stripe2) 20px);display:flex;align-items:center;justify-content:center"><span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--muted);background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:6px 12px">figure 2 — framework: encoder, MoE decoder, queued KV cache</span></div>
+          <p style="margin:0;padding:12px 16px;font-size:12.5px;line-height:1.5;color:var(--mid);border-top:1px solid var(--hair)"><strong>Figure 2</strong> — The framework: DeepEncoder compresses input pages 16× into visual tokens; a 3B-MoE decoder (≈570M active) runs R-SWA in every layer. The KV cache is a queue of capacity m + n — each new token evicts the oldest output entry, so memory never grows during generation.</p>
+        </div>
+        <p style="text-align:center;font-family:'Geist Mono',monospace;font-size:11px;color:var(--muted2);margin:40px 0 0">3</p>
+      </div>
+
+      <div data-pg="4" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.03);padding:56px 64px">
+        <h3 style="font-size:14.5px;font-weight:600;margin:0 0 10px">3.2 Architecture</h3>
+        <p style="margin:0 0 14px;text-align:justify">Unlimited OCR keeps DeepSeek OCR’s encoder–decoder layout: DeepEncoder feeding a 3B-parameter MoE LLM with roughly 500M activated parameters. The single change is decoder-side — vanilla multi-head attention is swapped for R-SWA in all layers, adding a fixed-width output KV buffer of width n to the reference cache of size m.</p>
+        <h3 style="font-size:14.5px;font-weight:600;margin:22px 0 10px">3.3 DeepEncoder</h3>
+        <p style="margin:0 0 14px;text-align:justify">DeepEncoder cascades SAM-ViT (window attention) into CLIP-ViT (global attention) with 16× token compression at the bridge, turning a 1024×1024 page into 256 visual tokens. Two resolution modes are kept: “Base” for multi-page inputs and “Gundam” for single pages. Visual tokens are encoded once and stay static for the whole parse — a property R-SWA depends on.</p>
+        <h3 style="font-size:14.5px;font-weight:600;margin:22px 0 10px">3.4 Reference Sliding Window Attention</h3>
+        <p style="margin:0 0 14px;text-align:justify">Assume one visual token decodes to roughly ten text tokens: 10K visual tokens — 20–30 pages — demand an output beyond 100K tokens, untenable for vanilla attention. R-SWA constrains each token’s view to a two-segment window:</p>
+        <div style="margin:0 0 14px;padding:14px 18px;background:var(--raise);border:1px solid var(--hair);border-radius:8px;font-family:'Geist Mono',monospace;font-size:12.5px;line-height:2.1;overflow-x:auto;white-space:nowrap">N(t) = P ∪ Dₙ(t), P = {1, …, Lₘ}<br>C_MHA(T) = Lₘ + T  vs.  C_R-SWA(T) = Lₘ + min(n, T) ≤ Lₘ + n</div>
+        <p style="margin:0 0 14px;text-align:justify">The prefix window m is fixed by page count; the decode window n = 128 slides causally. The cache ratio (Lₘ + n) / (Lₘ + T) shrinks toward zero as output grows — the longer the parse, the larger the saving.</p>
+        <div style="margin:24px 0 0;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <div style="height:200px;background:repeating-linear-gradient(45deg,var(--stripe1),var(--stripe1) 10px,var(--stripe2) 10px,var(--stripe2) 20px);display:flex;align-items:center;justify-content:center"><span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--muted);background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:6px 12px">figure 3 — flash attention per-call latency by decode step</span></div>
+          <p style="margin:0;padding:12px 16px;font-size:12.5px;line-height:1.5;color:var(--mid);border-top:1px solid var(--hair)"><strong>Figure 3</strong> — Per-call Flash Attention v3 latency by decode step: the baseline climbs steadily (with a spike at a cache-alignment boundary) while Unlimited OCR stays flat. GPU memory during decode follows the same pattern.</p>
+        </div>
+        <p style="text-align:center;font-family:'Geist Mono',monospace;font-size:11px;color:var(--muted2);margin:40px 0 0">4</p>
+      </div>
+
+      <div data-pg="5" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.03);padding:56px 64px">
+        <h2 style="font-size:16.5px;font-weight:600;margin:0 0 12px">4 Experimental Settings</h2>
+        <p style="margin:0 0 14px;text-align:justify">Training uses ~2M document OCR samples at a 9:1 single- to multi-page ratio; multi-page examples are synthesized by concatenating single pages (2–50, separated by an &lt;page&gt; tag), everything packed to 32K tokens. Starting from the DeepSeek OCR checkpoint, the LLM is continue-trained for 4,000 steps (batch 256, AdamW, cosine schedule, lr 1e-4) with DeepEncoder frozen. R-SWA cache management is implemented in both Transformers and SGLang.</p>
+        <h2 style="font-size:16.5px;font-weight:600;margin:28px 0 12px">5 Evaluation</h2>
+        <p style="margin:0 0 14px;text-align:justify">OmniDocBench is the main benchmark — v1.5 for comparison with classic models including the baseline, v1.6 against current SOTA. Metrics span text edit distance, formula CDM, table TEDS, and reading-order edit distance.</p>
+        <p style="margin:18px 0 8px;font-size:12.5px;color:var(--mid)"><strong>Table 1</strong> — OmniDocBench v1.5, condensed. On v1.6 Unlimited OCR reaches 93.92 — end-to-end SOTA.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin:0 0 16px">
+          <thead><tr><th style="text-align:left;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">Model</th><th style="text-align:right;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">Size</th><th style="text-align:right;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">Overall ↑</th><th style="text-align:right;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">Text Edit ↓</th></tr></thead>
+          <tbody>
+            <tr><td style="padding:8px 10px;border-bottom:1px solid var(--hair)">GPT-4o</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">—</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">75.02</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">0.217</td></tr>
+            <tr><td style="padding:8px 10px;border-bottom:1px solid var(--hair)">Qwen2.5-VL</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">72B</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">87.02</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">0.094</td></tr>
+            <tr><td style="padding:8px 10px;border-bottom:1px solid var(--hair)">dots.ocr</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">3B</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">88.41</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">0.048</td></tr>
+            <tr><td style="padding:8px 10px;border-bottom:1px solid var(--hair)">DeepSeek-OCR (baseline)</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">3B-A0.5B</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">87.01</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">0.073</td></tr>
+            <tr><td style="padding:8px 10px;font-weight:600">Unlimited-OCR</td><td style="text-align:right;font-family:'Geist Mono',monospace;font-weight:500;padding:8px 10px">3B-A0.5B</td><td style="text-align:right;font-family:'Geist Mono',monospace;font-weight:500;padding:8px 10px">93.23</td><td style="text-align:right;font-family:'Geist Mono',monospace;font-weight:500;padding:8px 10px">0.038</td></tr>
+          </tbody>
+        </table>
+        <p style="margin:0;text-align:justify">The gain comes entirely from the decoder-side change: text edit distance improves by 0.035, table TEDS by 5.96, and formula CDM by 9.24 over the baseline — evidence that a 128-token causal window carries enough state for the model to track its own OCR progress.</p>
+        <p style="text-align:center;font-family:'Geist Mono',monospace;font-size:11px;color:var(--muted2);margin:40px 0 0">5</p>
+      </div>
+
+      <div data-pg="6" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.03);padding:56px 64px">
+        <h2 style="font-size:16.5px;font-weight:600;margin:0 0 12px">5.4 Long-horizon Parsing</h2>
+        <p style="margin:0 0 14px;text-align:justify">With a fixed KV cache, Unlimited OCR prefills tens of pages and parses from first to last in one pass at constant latency. Remaining errors trace mostly to small text at the 1024×1024 “Base” resolution, not to R-SWA losing its place.</p>
+        <p style="margin:14px 0 8px;font-size:12.5px;color:var(--mid)"><strong>Table 3</strong> — One-shot multi-page OCR by page count.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin:0 0 4px">
+          <thead><tr><th style="text-align:left;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">Pages</th><th style="text-align:right;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">2</th><th style="text-align:right;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">5</th><th style="text-align:right;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">10</th><th style="text-align:right;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">15</th><th style="text-align:right;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">20</th><th style="text-align:right;font-family:'Geist',sans-serif;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1.5px solid var(--ink)">40+</th></tr></thead>
+          <tbody>
+            <tr><td style="padding:8px 10px;border-bottom:1px solid var(--hair)">Distinct-35 ↑</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">99.87</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">99.98</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">99.83</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">99.99</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">99.89</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px;border-bottom:1px solid var(--hair)">96.90</td></tr>
+            <tr><td style="padding:8px 10px">Edit Distance ↓</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px">0.036</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px">0.045</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px">0.053</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px">0.079</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px">0.057</td><td style="text-align:right;font-family:'Geist Mono',monospace;padding:8px 10px">0.107</td></tr>
+          </tbody>
+        </table>
+        <h2 style="font-size:16.5px;font-weight:600;margin:28px 0 12px">6 Efficiency Analysis</h2>
+        <p style="margin:0 0 14px;text-align:justify">Under ideal concurrency the two models start equal at 256 output tokens, but the baseline’s TPS decays with length while Unlimited OCR holds steady — a 35% advantage by 6K tokens, and 12.7% end-to-end on OmniDocBench (5,580 vs 4,951 TPS).</p>
+        <h2 style="font-size:16.5px;font-weight:600;margin:28px 0 12px">7 Limitation and Future Work</h2>
+        <p style="margin:0 0 14px;text-align:justify">Parsing is not yet truly unlimited: prefill still grows with page count under the 32K context. Short term, longer-context training (128K); long term, a prefill pool the model fetches KV chunks from — the machine version of flipping pages. R-SWA is also slated for ASR and translation.</p>
+        <h2 style="font-size:16.5px;font-weight:600;margin:28px 0 12px">8 Conclusion</h2>
+        <p style="margin:0;text-align:justify">Replacing every decoder attention with reference-based causal SWA proves lossless for parsing: useful history flows forward through the window, and soft forgetting of one’s own output — the human strategy — removes attention computation and memory as the bottleneck for long-horizon work.</p>
+        <p style="text-align:center;font-family:'Geist Mono',monospace;font-size:11px;color:var(--muted2);margin:40px 0 0">6</p>
+      </div>
+    </div>
+
+    <div style="position:sticky;bottom:16px;display:flex;justify-content:center;pointer-events:none;padding-bottom:4px">
+      <div style="pointer-events:auto;display:flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--border2);border-radius:99px;padding:4px;box-shadow:0 4px 16px rgba(0,0,0,.08)">
+        <button onClick="{{ prevPage }}" style="{{ prevStyle }}">←</button>
+        <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--mid);padding:0 8px;white-space:nowrap">Page {{ page }} / 6</span>
+        <button onClick="{{ nextPage }}" style="{{ nextStyle }}">→</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="width:404px;flex:none;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
+    <div style="flex:none;padding:14px 16px 12px;border-bottom:1px solid var(--hair);display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="color:var(--accent);font-size:14px">✦</span>
+        <span style="font-size:13.5px;font-weight:600">Assistant</span>
+        <div style="flex:1"></div>
+      </div>
+      <div style="display:flex;background:var(--seg);border-radius:8px;padding:3px;gap:2px">
+        <button onClick="{{ setScopePage }}" style="{{ scopePageStyle }}">{{ scopePageLabel }}</button>
+        <button onClick="{{ setScopePaper }}" style="{{ scopePaperStyle }}">Full Document</button>
+      </div>
+    </div>
+
+    <div ref="{{ setChatEl }}" style="flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px">
+      <sc-if value="{{ noMsgs }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:0 24px">
+          <div style="width:38px;height:38px;border-radius:10px;background:var(--accentTint);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:17px">✦</div>
+          <div style="font-size:14px;font-weight:600">Ask about this paper</div>
+          <div style="font-size:12.5px;color:var(--muted);line-height:1.5">Questions are grounded in the current scope. Highlight any passage in the paper to ask about it directly.</div>
+        </div>
+      </sc-if>
+      <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="0">
+        <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}">
+          <div style="align-self:flex-end;max-width:85%;display:flex;flex-direction:column;gap:5px;animation:mfade .15s ease">
+            <sc-if value="{{ m.ctx }}" hint-placeholder-val="{{ false }}">
+              <div style="align-self:flex-end;font-size:11.5px;color:var(--accentText);background:var(--accentTint);border-left:2px solid var(--accentMid);border-radius:0 6px 6px 0;padding:6px 10px;font-style:italic;line-height:1.45">“{{ m.ctxShort }}”</div>
+            </sc-if>
+            <div style="background:var(--inv);color:var(--invText);font-size:13.5px;line-height:1.5;padding:9px 13px;border-radius:12px 12px 3px 12px">{{ m.text }}</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ m.isAi }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:9px;max-width:95%;animation:mfade .15s ease">
+            <div style="flex:none;width:22px;height:22px;border-radius:6px;background:var(--accentTint);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;margin-top:2px">✦</div>
+            <div style="font-size:13.5px;line-height:1.6;color:var(--ink2);white-space:pre-wrap">{{ m.text }}</div>
+          </div>
+        </sc-if>
+      </sc-for>
+      <sc-if value="{{ typing }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:9px;align-items:center">
+          <div style="flex:none;width:22px;height:22px;border-radius:6px;background:var(--accentTint);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px">✦</div>
+          <div style="display:flex;gap:4px;padding:6px 0">
+            <span style="width:5px;height:5px;border-radius:50%;background:var(--muted);animation:mblink 1.1s infinite"></span>
+            <span style="width:5px;height:5px;border-radius:50%;background:var(--muted);animation:mblink 1.1s infinite .18s"></span>
+            <span style="width:5px;height:5px;border-radius:50%;background:var(--muted);animation:mblink 1.1s infinite .36s"></span>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="flex:none;padding:12px 16px 16px;border-top:1px solid var(--hair);display:flex;flex-direction:column;gap:10px">
+      <sc-if value="{{ showSuggestions }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <sc-for list="{{ suggestions }}" as="s" hint-placeholder-count="3">
+            <button onClick="{{ s.send }}" style="background:var(--raise);border:1px solid var(--border);border-radius:99px;padding:5px 11px;font-size:12px;color:var(--mid);cursor:pointer;white-space:nowrap" style-hover="border-color:var(--accentMid);color:var(--accentText);background:var(--accentFaint)">{{ s.label }}</button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ hasChip }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:flex-start;gap:8px;background:var(--accentTint);border:1px solid var(--accentTint2);border-radius:8px;padding:8px 10px;animation:mfade .12s ease">
+          <span style="flex:none;font-size:11px;color:var(--accent);margin-top:1px">❝</span>
+          <span style="flex:1;font-size:12px;font-style:italic;color:var(--accentText);line-height:1.45">{{ chipShort }}</span>
+          <button onClick="{{ clearChip }}" style="flex:none;background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0 2px;line-height:1">×</button>
+        </div>
+      </sc-if>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input ref="{{ setInputEl }}" value="{{ input }}" onChange="{{ onInput }}" onKeyDown="{{ onKey }}" placeholder="{{ inputPlaceholder }}" style="flex:1;border:1px solid var(--border2);border-radius:9px;padding:10px 13px;font-size:13.5px;background:var(--surface);color:var(--ink)" style-focus="border-color:var(--accentMid);box-shadow:0 0 0 3px var(--focusRing)">
+        <button onClick="{{ send }}" style="{{ sendStyle }}">↑</button>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ modalOpen }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ closeModal }}" style="position:fixed;inset:0;z-index:40;background:rgba(20,20,20,.4);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding-top:14vh">
+  <div onClick="{{ stop }}" style="width:480px;background:var(--surface);border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.25);overflow:hidden;animation:mfade .15s ease">
+    <div style="padding:20px 22px 0">
+      <div style="font-size:16px;font-weight:600;letter-spacing:-.2px;margin-bottom:4px">Add a paper</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Paste a link or upload a PDF — it will appear in your library.</div>
+      <div style="display:flex;gap:18px;border-bottom:1px solid var(--hair)">
+        <button onClick="{{ setTabLink }}" style="{{ tabLinkStyle }}">From link</button>
+        <button onClick="{{ setTabUpload }}" style="{{ tabUploadStyle }}">Upload file</button>
+      </div>
+    </div>
+    <div style="padding:20px 22px 22px">
+      <sc-if value="{{ tabLink }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <input value="{{ link }}" onChange="{{ onLink }}" placeholder="https://arxiv.org/abs/2507.01234" style="border:1px solid var(--border2);border-radius:8px;padding:10px 13px;font-size:13.5px;font-family:'Geist Mono',monospace;color:var(--ink)" style-focus="border-color:var(--accentMid);box-shadow:0 0 0 3px var(--focusRing)">
+          <div style="font-size:12px;color:var(--muted)">Supports arXiv, OpenReview, ACL Anthology and direct PDF links.</div>
+          <button onClick="{{ addByLink }}" style="{{ linkBtnStyle }}">Fetch &amp; add paper</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ tabUpload }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ doUpload }}" style="border:1.5px dashed var(--faint);border-radius:10px;padding:34px 20px;text-align:center;cursor:pointer;display:flex;flex-direction:column;gap:8px;align-items:center" style-hover="border-color:var(--accentMid);background:var(--accentFaint)">
+          <div style="width:36px;height:36px;border-radius:9px;background:var(--seg);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--mid)">↑</div>
+          <sc-if value="{{ uploading }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13.5px;font-weight:500;color:var(--accent)">Uploading quantized-moe-inference.pdf…</div>
+            <div style="width:180px;height:4px;background:var(--hair);border-radius:99px;overflow:hidden"><div style="width:66%;height:100%;background:var(--accent);border-radius:99px"></div></div>
+          </sc-if>
+          <sc-if value="{{ notUploading }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:13.5px;font-weight:500">Drop a PDF here, or click to browse</div>
+            <div style="font-size:12px;color:var(--muted)">PDF up to 50 MB</div>
+          </sc-if>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultScope&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;page&quot;,&quot;options&quot;:[&quot;page&quot;,&quot;paper&quot;],&quot;tsType&quot;:&quot;'page'|'paper'&quot;,&quot;section&quot;:&quot;Chat&quot;},&quot;showSuggestions&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Chat&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'library', activeId: null, q: '', filter: 'All', modal: false, tab: 'link', link: '', uploading: false, toast: '', light: false,
+    papers: [
+      { id: 'p1', title: 'Unlimited OCR Works', authors: 'Baidu Inc.', venue: 'arXiv:2606.23050 [cs.CV] · 22 Jun 2026', source: 'arXiv', tag: 'Vision', tags: ['ocr', 'r-swa', 'kv-cache'], pages: 6, added: 'Jul 17',
+        abstract: 'End-to-end OCR models that decode with an LLM slow down as output grows: the accumulated KV cache inflates memory and drags generation speed. Unlimited OCR replaces every decoder attention layer with Reference Sliding Window Attention (R-SWA), in which each token attends to all visual reference tokens but only the last 128 output tokens — so the KV cache stays constant for the entire decode. Paired with DeepEncoder’s 16× token compression, the model transcribes dozens of document pages in one 32K forward pass and reaches 93.2 on OmniDocBench v1.5, six points above its DeepSeek OCR baseline.' },
+      { id: 'p2', title: 'Diffusion Policies for Dexterous In-Hand Manipulation', authors: 'A. Ferreira, L. Zhou, S. Brandt', venue: 'Preprint · arXiv:2506.11902 · June 2026', source: 'arXiv', tag: 'Robotics', tags: ['diffusion', 'tactile', 'sim2real'], pages: 6, added: 'Jul 8',
+        abstract: 'We study diffusion-based action policies for contact-rich in-hand manipulation, showing that denoising over short action horizons with tactile conditioning yields robust regrasping behaviors that transfer from simulation to hardware without task-specific tuning.' },
+      { id: 'p3', title: 'Scaling Laws for Data-Constrained Pretraining', authors: 'J. Whitfield, N. Adeyemi, P. Kowalski, H. Sato', venue: 'Preprint · arXiv:2505.09344 · May 2026', source: 'arXiv', tag: 'Theory', tags: ['scaling-laws', 'data', 'pretraining'], pages: 6, added: 'Jun 30',
+        abstract: 'When unique data is finite, how should compute be spent? We fit scaling laws across 400 training runs under fixed token budgets and find that moderate repetition with decayed learning rates recovers most of the loss gap to infinite-data training, up to a sharp four-epoch threshold.' },
+      { id: 'p4', title: 'Self-Correcting Code Generation via Execution Feedback', authors: 'D. Marchetti, E. Okafor, V. Iyer', venue: 'Preprint · arXiv:2504.15577 · April 2026', source: 'PDF', tag: 'Systems', tags: ['codegen', 'execution', 'repair'], pages: 6, added: 'Jun 21',
+        abstract: 'We train code models to interleave generation with execution, treating runtime traces as first-class context. Iterative repair conditioned on failing tests improves pass@1 by 14 points over sampling-based baselines at equal inference cost.' }
+    ],
+    msgs: {}, input: '', scope: null, page: 1, sel: null, chip: '', typing: false, model: 'claude-sonnet-4.5'
+  };
+  componentDidMount() {
+    this._up = (e) => {
+      if (e.target && e.target.closest && e.target.closest('[data-seltb]')) return;
+      setTimeout(() => {
+        if (this.state.screen !== 'reader') return;
+        const s = window.getSelection();
+        const t = s ? s.toString().trim() : '';
+        if (t && t.length > 3 && s.rangeCount) {
+          const n = s.anchorNode; const el = n && (n.nodeType === 3 ? n.parentElement : n);
+          if (el && el.closest && el.closest('[data-paper]')) {
+            const r = s.getRangeAt(0).getBoundingClientRect();
+            this.setState({ sel: { text: t, x: Math.max(150, Math.min(window.innerWidth - 150, r.left + r.width / 2)), y: r.top } });
+            return;
+          }
+        }
+        if (this.state.sel) this.setState({ sel: null });
+      }, 10);
+    };
+    document.addEventListener('mouseup', this._up);
+  }
+  componentWillUnmount() { document.removeEventListener('mouseup', this._up); clearTimeout(this._t); clearTimeout(this._tt); }
+  componentDidUpdate() { const n = (this.state.msgs[this.state.activeId] || []).length + (this.state.typing ? 1 : 0); if (this.chatEl && n !== this._mc) { this._mc = n; this.chatEl.scrollTop = this.chatEl.scrollHeight; } }
+  goPage(n) { if (!this.paperEl || n < 1 || n > 6) return; const el = this.paperEl.querySelector('[data-pg="' + n + '"]'); if (el) this.paperEl.scrollTo({ top: el.offsetTop - 20, behavior: 'smooth' }); }
+  trackPage() { const c = this.paperEl; if (!c) return; const line = c.scrollTop + c.clientHeight * 0.35; let pg = 1; c.querySelectorAll('[data-pg]').forEach(el => { if (el.offsetTop <= line) pg = +el.getAttribute('data-pg'); }); if (pg !== this.state.page) this.setState({ page: pg }); }
+  effScope() { return this.state.scope || (this.props.defaultScope ?? 'page'); }
+  toast(msg) { this.setState({ toast: msg }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: '' }), 2400); }
+  addPaper(p) { this.setState({ papers: [{ ...p, id: 'n' + Date.now(), pages: 6, added: 'Just now', isNew: true }, ...this.state.papers], modal: false, link: '', uploading: false }); this.toast('Paper added to library'); }
+  sendText(text, ctx) {
+    const id = this.state.activeId; if (!text.trim()) return;
+    const msgs = { ...this.state.msgs }; msgs[id] = [...(msgs[id] || []), { role: 'user', text, ctx: ctx || '' }];
+    this.setState({ msgs, input: '', chip: '', sel: null, typing: true });
+    try { window.getSelection().removeAllRanges(); } catch (e) {}
+    clearTimeout(this._t);
+    this._t = setTimeout(() => {
+      const m2 = { ...this.state.msgs }; m2[id] = [...(m2[id] || []), { role: 'ai', text: this.reply(text, ctx) }];
+      this.setState({ msgs: m2, typing: false });
+    }, 1200);
+  }
+  reply(q, ctx) {
+    const ql = q.toLowerCase(); let scope = ctx ? 'selection' : this.effScope(); const p = this.state.page;
+    const where = scope === 'selection' ? 'the highlighted passage' : scope === 'page' ? 'page ' + p : 'the whole paper';
+    if (/eli\d|in plain|simpl[ey]/.test(ql)) return 'Imagine copying a book by hand. You keep glancing at the source page, and you only remember the last few words you wrote — not every word so far. Most AI OCR models do the opposite: for every new word they write, they re-check everything they have already written, so long documents make them slower and hungrier for memory.\n\nUnlimited OCR copies the human habit. The model can always see the scanned pages (the "reference"), but it only remembers its last 128 output tokens. That memory never grows, so it can transcribe dozens of pages in one continuous pass — and it got more accurate, not less (93.2 vs 87.0 for its baseline on OmniDocBench).';
+    if (/summar/.test(ql)) {
+      if (/whole|entire|full paper/.test(ql)) scope = 'paper';
+      if (scope === 'selection') return 'One line: this passage argues that constant per-step cost comes from separating what the model must always see (the visual reference) from what it only needs recently (its own output).';
+      if (scope === 'page' && p === 1) return 'Page 1 is the title page and abstract:\n\n• Problem — LLM-decoder OCR models accumulate KV cache as output grows, inflating memory and slowing generation.\n• Idea — replace all decoder attention with R-SWA: every token sees all visual reference tokens, plus only the preceding 128 output tokens.\n• Payoff — constant KV cache for the whole decode; dozens of pages in a single 32K forward pass; 93% on OmniDocBench v1.5, +6 over the DeepSeek OCR baseline.';
+      if (scope === 'page' && p === 2) return 'Page 2 is the introduction (§1):\n\n• Current OCR models parse page-by-page in a for-loop, resetting memory each page — an engineering workaround, unlike a human’s continuous working memory.\n• Humans consult the source constantly but glance only at what they just wrote — neither full attention nor linear attention matches this.\n• Contributions: (1) R-SWA, (2) Unlimited OCR at 93% on OmniDocBench v1.5 (+6%), (3) evidence that reference-based sliding attention extends to ASR / translation-style tasks.';
+      if (scope === 'page' && p === 3) return 'Page 3 covers related work and the core intuition (§2–3.1):\n\n• Pipeline OCR (detect → crop → recognize) still dominates; end-to-end VLMs parse a full page in one pass but demand more from the decoder.\n• The encoder sets the ceiling — DeepEncoder’s 16× compression turns a 1024×1024 page into 256 tokens; the decoder’s growing KV cache is the remaining bottleneck.\n• §3.1: human transcription = eyes on the source + the last few written characters + soft forgetting. Figure 2 turns that into an architecture.';
+      if (scope === 'page' && p === 4) return 'Page 4 is the R-SWA mechanism (§3.2–3.4):\n\n• Architecture: DeepEncoder + 3B MoE decoder (~500M active); the only change is swapping MHA for R-SWA in every layer.\n• Attention is a two-segment window: all Lₘ prefix tokens (visual + prompt, fixed) plus a causal window of the last n = 128 output tokens.\n• Cache: MHA needs Lₘ + T entries after T tokens; R-SWA needs Lₘ + min(n, T) — bounded by a constant.\n• Kernel study (Figure 3): per-call latency grows for the baseline, stays flat under R-SWA.';
+      if (scope === 'page' && p === 5) return 'Page 5 covers training and main results (§4–5.2):\n\n• ~2M OCR samples (9:1 single- vs multi-page, up to 50 pages, packed to 32K); 4,000 steps from the DeepSeek OCR checkpoint, encoder frozen.\n• OmniDocBench v1.5: 93.23 overall vs 87.01 for the baseline — text edit distance 0.038, ahead of dots.ocr and Qwen2.5-VL.\n• v1.6: 93.92 — end-to-end SOTA.';
+      if (scope === 'page') return 'Page 6 wraps up (§5.4–8):\n\n• Long-horizon: edit distance stays ≤ 0.11 from 2 to 40+ pages in one pass; Distinct-35 ≥ 96.9% (no degenerate repetition).\n• Efficiency: constant TPS as output grows — 35% faster than the baseline at 6K output tokens.\n• Limitations: prefill still grows with page count under the 32K context; future: 128K training and a fetchable "prefill pool".\n• Conclusion: soft forgetting over one’s own output is lossless for parsing.';
+      return 'Whole-paper summary:\n\nProblem — LLM-based OCR decoders pay for a KV cache that grows with every generated token (§1).\nIdea — R-SWA: attend to all visual reference tokens always, but only the last 128 output tokens (§3.4, p. 4).\nResult — constant KV cache and latency; dozens of pages parsed in one 32K pass; 93.23 on OmniDocBench v1.5, +6.22 over DeepSeek OCR, and SOTA on v1.6 (§5, p. 5).\nClaim — human-style soft forgetting of one’s own output is lossless for long-horizon parsing, and should transfer to ASR and translation (§8).';
+    }
+    if (/fig(ure)?\.?\s*2/.test(ql)) return 'Figure 2 (p. 3) is the system diagram, built on the book-copying analogy:\n\n• Left: a person copying a book — eyes on the source, working memory holding only the last few characters, soft forgetting of the rest.\n• Right: DeepEncoder compresses the input pages 16× into visual tokens; the 3B-MoE decoder (~570M active) runs R-SWA in every layer.\n• Bottom: the KV cache as a queue of capacity m + n — each new token evicts the oldest output-token entry, so memory never grows.';
+    if (/fig(ure)?\.?\s*3/.test(ql)) return 'Figure 3 (p. 4) plots per-call Flash Attention v3 kernel latency against decode step:\n\n• DeepSeek OCR (baseline): latency climbs steadily as the KV cache grows, with a visible spike when the cache crosses an alignment boundary.\n• Unlimited OCR: a flat line — constant duration at every decode step.\n\nThe same flat-vs-linear pattern holds for GPU memory, which is what makes one-shot parsing of dozens of pages feasible.';
+    if (/figure|diagram|image/.test(ql)) return 'Figure 1 (p. 1) contrasts vanilla attention with R-SWA over the same decode:\n\n• Vanilla: every generated token attends to all previous tokens — the KV cache grows with output length.\n• R-SWA: each token attends to all reference tokens (the visual tokens) plus a fixed window of the preceding 128 output tokens.\n\nTwo details matter: the cache stays constant, and reference tokens are excluded from state transitions — unlike vanilla SWA, the image never gets progressively "blurred" as decoding proceeds.';
+    if (/contribution/.test(ql)) return 'Three claimed contributions (§1, p. 2):\n\n1. R-SWA — attention to all reference tokens + a causal 128-token window over outputs, giving a constant KV cache during inference.\n2. Unlimited OCR — DeepSeek OCR with every decoder attention layer swapped for R-SWA: one-shot parsing of dozens of pages, 93% on OmniDocBench v1.5 (+6 over baseline).\n3. A first validation that linear-cost, reference-based attention is lossless for long-horizon parsing — with ASR and translation as next targets.';
+    if (/deepencoder|encoder|compress/.test(ql)) return 'DeepEncoder (§3.3, p. 4 — inherited from DeepSeek OCR) is what keeps the prefix small:\n\n• SAM-ViT (window attention) cascaded into CLIP-ViT (global attention) with 16× token compression at the bridge — a 1024×1024 page becomes just 256 tokens.\n• Two modes kept: "Base" (1024×1024, multi-page) and "Gundam" (dynamic resolution, single-page).\n• Crucially, visual tokens are encoded once and never updated during decoding — recognition quality does not drift over a long parse. The encoder stays frozen during training.';
+    if (/train|data engine|dataset/.test(ql)) return 'Training setup (§4, p. 5):\n\n• Data: ~2M document OCR samples, 9:1 single- to multi-page; multi-page examples synthesized by concatenating single pages (2–50, <page> separator), packed to 32K tokens.\n• Recipe: continue-train from the DeepSeek OCR checkpoint for 4,000 steps, batch 256, AdamW + cosine, lr 1e-4; DeepEncoder frozen, LLM only.\n• Inference: R-SWA cache management implemented in Transformers and SGLang — both run at constant TPS and GPU memory.';
+    if (/r-swa|swa|method|how does|attention|window/.test(ql)) return 'R-SWA (§3.4, p. 4) in three rules:\n\n1. Reference is global — every generated token attends to all Lₘ prefix tokens (visual tokens + prompt). This never changes during a decode.\n2. Output is local — beyond the prefix, a token sees only the preceding n = 128 generated tokens, sliding causally.\n3. Evict as you go — the KV cache is a queue of capacity m + n; each new token pushes out the oldest output entry.\n\nThe model always sees the full image but tracks its own progress through a short window — like glancing at the last few characters you wrote.';
+    if (/kv|cache|constant|memory/.test(ql)) return 'The cache math (§3.4.2, p. 4):\n\n• Standard MHA after T generated tokens: cache = Lₘ + T — grows without bound.\n• R-SWA: cache = Lₘ + min(n, T) ≤ Lₘ + n — constant once T > 128.\n• The ratio (Lₘ + n)/(Lₘ + T) → 0 as output grows, so the longer the document, the bigger the saving.\n\nThis is the cornerstone: both memory and per-step attention cost stop depending on how much has already been written.';
+    if (/result|score|benchmark|omnidocbench|table|number/.test(ql)) return 'Key numbers (§5, p. 5):\n\n• OmniDocBench v1.5 overall: 93.23 vs 87.01 (DeepSeek OCR baseline), +6.22 — also ahead of dots.ocr (88.41), Qwen2.5-VL 72B (87.02), GPT-4o (75.02).\n• Text edit distance 0.038 (baseline 0.073); table TEDS +5.96; formula CDM +9.24.\n• v1.6: 93.92 overall — end-to-end SOTA.\n\nNotable: the decoder-side change alone produced these gains — the encoder is untouched and frozen.';
+    if (/fast|speed|tps|latency|efficien/.test(ql)) return 'Speed (§6, p. 6):\n\n• Throughput stays constant as output grows: at 6,144 output tokens the baseline drops to ~5,823 TPS while Unlimited OCR holds ~7,848 — a 35% gap.\n• End-to-end on OmniDocBench: 5,580 vs 4,951 TPS (+12.7%), widening with longer documents.\n• Per-call kernel latency is flat (Figure 3, p. 4), and GPU memory during decode is fixed.';
+    if (/limit|weak|critic|concern|flaw/.test(ql)) return 'Limitations (§7, p. 6 — plus some the authors don’t dwell on):\n\n• "Unlimited" is bounded by prefill: visual tokens still accumulate per page, so the 32K context caps how many pages fit — future work targets 128K and a fetchable "prefill pool".\n• Multi-page uses the 1024×1024 "Base" mode; most long-horizon errors trace to small text at that resolution.\n• Multi-page training data is synthetic (concatenated single pages), not native multi-page documents.\n• Claims about ASR/translation transfer are untested here.';
+    if (/problem|why|motivat|solve|for-loop|loop/.test(ql)) return 'The problem (§1, p. 2): no end-to-end OCR model could parse even ten pages in one forward pass. They loop page-by-page, resetting memory each time — fragmenting one continuous task into isolated steps under an external scheduler.\n\nThe deeper cost issue: with an LLM decoder, the KV cache grows with every output token, so memory rises and generation slows exactly on the long documents where you need it most. Humans show no such slowdown when copying a book — which is the behavior this paper reverse-engineers.';
+    if (ctx) return 'About that passage: it sits inside the paper’s core argument — reference tokens (the pages being read) and output tokens (what has been written) deserve different memory treatment. The reference must stay fully visible and undistorted; one’s own output only needs a short recency window.\n\nThat asymmetry is what R-SWA encodes (§3.4, p. 4), and the evidence it costs nothing is the +6.22 OmniDocBench gain over the full-attention baseline (Table 1, p. 5).';
+    return 'Based on ' + where + ': Unlimited OCR shows that an LLM-decoder OCR model does not need a growing KV cache. R-SWA keeps all visual reference tokens visible but remembers only the last 128 output tokens (§3.4, p. 4), holding memory and latency constant — while beating its full-attention baseline by 6.22 points on OmniDocBench v1.5 (§5, p. 5).\n\nHighlight a passage in the paper to go deeper, or switch scope above.';
+  }
+  renderVals() {
+    const st = this.state; const scope = this.effScope();
+    const ql = st.q.toLowerCase();
+    const papersView = st.papers.filter(p => (st.filter === 'All' || p.tag === st.filter) && (!ql || (p.title + ' ' + p.authors + ' ' + p.tag + ' ' + (p.tags || []).join(' ')).toLowerCase().includes(ql))).map((p, i, arr) => ({ ...p, idx: String(i + 1).padStart(2, '0'), pagesLabel: p.pages + ' pages', open: () => this.setState({ screen: 'reader', activeId: p.id, page: 1, sel: null, chip: '' }),
+      rowStyle: { display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', cursor: 'pointer', borderTop: i ? '1px solid var(--hair)' : 'none', borderRadius: i === 0 ? '10px 10px 0 0' : i === arr.length - 1 ? '0 0 10px 10px' : 0, transition: 'background .12s' } }));
+    const fpill = { border: '1px solid var(--border2)', background: 'none', color: 'var(--mid)', borderRadius: 99, padding: '6px 14px', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' };
+    const filters = ['All', 'Vision', 'NLP', 'Robotics', 'Theory', 'Systems'].map(l => ({ label: l, set: () => this.setState({ filter: l }), style: st.filter === l ? { ...fpill, background: 'var(--accentTint)', borderColor: 'var(--accentMid)', color: 'var(--accentText)' } : fpill }));
+    const active = st.papers.find(p => p.id === st.activeId) || st.papers[0];
+    const msgs = (st.msgs[st.activeId] || []).map(m => ({ ...m, isUser: m.role === 'user', isAi: m.role === 'ai', ctxShort: m.ctx && (m.ctx.length > 110 ? m.ctx.slice(0, 110) + '…' : m.ctx) }));
+    const segBase = { flex: 1, border: 'none', borderRadius: 6, padding: '6px 4px', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'none', color: 'var(--mid)', transition: 'all .12s' };
+    const segOn = { ...segBase, background: 'var(--segOn)', color: 'var(--ink)', boxShadow: '0 1px 3px rgba(0,0,0,.28)' };
+    const navBase = { width: 30, height: 30, border: 'none', borderRadius: 99, background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--mid)' };
+    const sugg = ({ 1: ['Summarize the abstract', 'What problem does this solve?', 'Explain Figure 1'], 2: ['What are the contributions?', 'ELI12 this paper', 'Summarize this page'], 3: ['Explain Figure 2', 'How does DeepEncoder help?', 'Summarize this page'], 4: ['How does R-SWA work?', 'Why is the KV cache constant?', 'Explain Figure 3'], 5: ['What are the key results?', 'How was it trained?', 'Summarize this page'], 6: ['Any limitations?', 'How fast is it?', 'Summarize the whole paper'] })[st.page].map(label => ({ label, send: () => this.sendText(label) }));
+    const tabBase = { background: 'none', border: 'none', borderBottom: '2px solid transparent', padding: '8px 2px 10px', fontSize: 13.5, fontWeight: 500, color: 'var(--muted)', cursor: 'pointer', marginBottom: -1, whiteSpace: 'nowrap' };
+    return {
+      toggleTheme: () => { const l = !st.light; document.body.classList.toggle('light', l); this.setState({ light: l }); }, themeIcon: st.light ? '\u263e' : '\u2600',
+      isLibrary: st.screen === 'library', isReader: st.screen === 'reader',
+      goLibrary: () => this.setState({ screen: 'library', sel: null, chip: '' }),
+      q: st.q, onQ: e => this.setState({ q: e.target.value }),
+      countLabel: papersView.length + (papersView.length === 1 ? ' paper' : ' papers') + ' · synced just now',
+      papersView, filters,
+      modalOpen: st.modal, openModal: () => this.setState({ modal: true, tab: 'link' }), closeModal: () => this.setState({ modal: false, uploading: false }), stop: e => e.stopPropagation(),
+      tabLink: st.tab === 'link', tabUpload: st.tab === 'upload',
+      setTabLink: () => this.setState({ tab: 'link' }), setTabUpload: () => this.setState({ tab: 'upload' }),
+      tabLinkStyle: st.tab === 'link' ? { ...tabBase, color: 'var(--ink)', borderBottomColor: 'var(--ink)' } : tabBase,
+      tabUploadStyle: st.tab === 'upload' ? { ...tabBase, color: 'var(--ink)', borderBottomColor: 'var(--ink)' } : tabBase,
+      link: st.link, onLink: e => this.setState({ link: e.target.value }),
+      linkBtnStyle: { background: st.link.trim() ? 'var(--inv)' : 'var(--border)', color: st.link.trim() ? 'var(--invText)' : 'var(--muted2)', border: 'none', borderRadius: 8, padding: '10px 0', fontSize: 13.5, fontWeight: 500, cursor: st.link.trim() ? 'pointer' : 'default', transition: 'all .15s' },
+      addByLink: () => { if (!st.link.trim()) return; this.addPaper({ title: 'Retrieval-Interleaved Decoding for Grounded Generation', authors: 'K. Almeida, S. Novak, F. Tanaka', venue: 'Preprint · arXiv:2507.09112 · July 2026', source: 'arXiv', tag: 'NLP', tags: ['retrieval', 'grounding', 'decoding'], abstract: 'We interleave retrieval calls with decoding, letting the model request evidence mid-generation. Grounded decoding reduces hallucinated citations by 61% on long-form QA.' }); },
+      uploading: st.uploading, notUploading: !st.uploading,
+      doUpload: () => { if (st.uploading) return; this.setState({ uploading: true }); setTimeout(() => { if (this.state.modal) this.addPaper({ title: 'Quantized Mixture-of-Experts Inference on Commodity GPUs', authors: 'B. Haugen, C. Reyes, W. Dlamini', venue: 'Uploaded PDF · quantized-moe-inference.pdf', source: 'PDF', tag: 'Systems', tags: ['quantization', 'moe', 'inference'], abstract: 'We present a 4-bit quantization scheme for MoE expert weights with router-aware calibration, enabling 47B-parameter sparse models to serve on a single 24 GB GPU at interactive latency.' }); }, 1400); },
+      activeTitle: active.title, activeAuthors: active.authors, activeVenue: active.venue, activeAbstract: active.abstract,
+      page: st.page,
+      prevPage: () => this.goPage(st.page - 1), nextPage: () => this.goPage(st.page + 1),
+      setPaperEl: el => { this.paperEl = el; }, onPaperScroll: () => this.trackPage(),
+      prevStyle: { ...navBase, color: st.page > 1 ? 'var(--mid)' : 'var(--faint)', cursor: st.page > 1 ? 'pointer' : 'default' },
+      nextStyle: { ...navBase, color: st.page < 6 ? 'var(--mid)' : 'var(--faint)', cursor: st.page < 6 ? 'pointer' : 'default' },
+      scopePageLabel: 'Page ' + st.page,
+      scopePageStyle: scope === 'page' ? segOn : segBase, scopePaperStyle: scope === 'paper' ? segOn : segBase,
+      setScopePage: () => this.setState({ scope: 'page' }), setScopePaper: () => this.setState({ scope: 'paper' }),
+      model: st.model, onModel: e => this.setState({ model: e.target.value }),
+      msgs, noMsgs: msgs.length === 0 && !st.typing, typing: st.typing,
+      suggestions: sugg, showSuggestions: (this.props.showSuggestions ?? true) && msgs.length === 0,
+      input: st.input, onInput: e => this.setState({ input: e.target.value }),
+      onKey: e => { if (e.key === 'Enter') this.sendText(st.input, st.chip); },
+      send: () => this.sendText(st.input, st.chip),
+      sendStyle: { flex: 'none', width: 38, height: 38, border: 'none', borderRadius: 9, background: st.input.trim() ? 'var(--accent)' : 'var(--hair)', color: st.input.trim() ? 'var(--invText)' : 'var(--faint)', fontSize: 15, cursor: st.input.trim() ? 'pointer' : 'default', transition: 'all .15s' },
+      inputPlaceholder: st.chip ? 'Ask about the highlighted text…' : scope === 'page' ? 'Ask about page ' + st.page + '…' : scope === 'paper' ? 'Ask about the paper…' : 'Ask a question…',
+      hasChip: !!st.chip, chipShort: st.chip.length > 140 ? st.chip.slice(0, 140) + '…' : st.chip,
+      clearChip: () => this.setState({ chip: '' }),
+      hasSel: !!st.sel,
+      selStyle: st.sel ? { position: 'fixed', left: st.sel.x, top: st.sel.y - 10, transform: 'translate(-50%,-100%)', zIndex: 50 } : { display: 'none' },
+      tbDown: e => e.preventDefault(),
+      askSel: () => { this.setState({ chip: st.sel.text, sel: null }); try { window.getSelection().removeAllRanges(); } catch (e) {} if (this.inputEl) this.inputEl.focus(); },
+      explainSel: () => this.sendText('Explain this passage', st.sel.text),
+      summarizeSel: () => this.sendText('Summarize this passage', st.sel.text),
+      eli5Sel: () => this.sendText('ELI12 this passage', st.sel.text),
+      toast: st.toast, hasToast: !!st.toast,
+      setChatEl: el => { this.chatEl = el; }, setInputEl: el => { this.inputEl = el; }
+    };
+  }
+}
+</script>
+</body>
+</html>

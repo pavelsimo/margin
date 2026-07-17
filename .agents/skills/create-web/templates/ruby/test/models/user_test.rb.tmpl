@@ -1,0 +1,17 @@
+require "test_helper"
+
+class UserTest < ActiveSupport::TestCase
+  test "email delegates to identity" do
+    assert_equal "alice@example.com", users(:alice).email
+  end
+
+  test "display_name is required" do
+    user = User.new(identity: identities(:alice))
+    assert_not user.valid?
+    assert_includes user.errors[:display_name], "can't be blank"
+  end
+
+  test "belongs to identity" do
+    assert_equal identities(:alice), users(:alice).identity
+  end
+end

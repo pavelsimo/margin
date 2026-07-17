@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Reflex
+.web/
+.states/
+assets/external/
+frontend.zip
+backend.zip
+
+# SQLite
+*.db
+*.db-wal
+*.db-shm
+
+# Environment
+.env
+.env.*

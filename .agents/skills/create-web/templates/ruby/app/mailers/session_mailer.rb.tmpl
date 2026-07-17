@@ -1,0 +1,14 @@
+class SessionMailer < ApplicationMailer
+  def magic_link
+    @identity = params[:identity]
+    @code     = params[:code]
+
+    # Log the code in development to avoid needing a real mail server
+    Rails.logger.info "[SessionMailer] Magic link code for #{@identity.email}: #{@code.value}" if Rails.env.development?
+
+    mail(
+      to:      @identity.email,
+      subject: "Your {{APP_NAME_HUMAN}} verification code: #{@code.value}"
+    )
+  end
+end

@@ -1,0 +1,54 @@
+# syntax=docker/dockerfile:1
+ARG PYTHON_VERSION={{PYTHON_VERSION}}
+
+FROM python:$PYTHON_VERSION-slim AS build
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# curl + unzip: Reflex downloads its bundled JS runtime to build the frontend
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y ca-certificates curl unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+
+COPY . .
+
+# Public URL baked into the static frontend (websocket + API go through Caddy)
+ARG API_URL=http://localhost:8080
+RUN REFLEX_API_URL=$API_URL API_URL=$API_URL uv run reflex export --frontend-only && \
+    unzip -o frontend.zip -d /srv && \
+    rm -rf frontend.zip .web
+
+FROM python:$PYTHON_VERSION-slim
+
+COPY --from=caddy:2 /usr/bin/caddy /usr/bin/caddy
+
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y curl sqlite3 && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --system --gid 1000 app && \
+    useradd app --uid 1000 --gid 1000 --create-home --shell /bin/bash
+
+WORKDIR /app
+COPY --from=build --chown=app:app /app /app
+COPY --from=build --chown=app:app /srv /srv
+COPY --chown=app:app Caddyfile /etc/caddy/Caddyfile
+# /app itself is created root-owned by WORKDIR; the backend writes .web markers into it
+RUN mkdir -p /data && chown app:app /data /app
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    DATABASE_URL="sqlite:////data/{{APP_MODULE}}.db"
+
+USER 1000:1000
+
+HEALTHCHECK --interval=30s --timeout=5s CMD curl -f http://localhost:8080/up || exit 1
+
+EXPOSE 8080
+ENTRYPOINT ["/app/bin/docker-entrypoint"]

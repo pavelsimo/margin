@@ -1,0 +1,60 @@
+class SessionsController < ApplicationController
+  allow_unauthenticated_access only: %i[new create verify confirm]
+  require_unauthenticated_access only: %i[new create]
+
+  RATE_LIMIT = 10
+  RATE_WINDOW = 15.minutes
+  CODE_EXPIRY = 15.minutes
+
+  def new
+  end
+
+  def create
+    identity = Identity.find_or_create_by_email(params.expect(:email))
+    if rate_limited?(identity)
+      redirect_to new_session_path, alert: "Too many requests. Please wait a few minutes and try again."
+    else
+      code = identity.magic_link_codes.create!(expires_at: CODE_EXPIRY.from_now)
+      SessionMailer.with(identity: identity, code: code).magic_link.deliver_later
+      session[:magic_link_identity_id] = identity.id
+      redirect_to verify_session_path, notice: "Check your email for a verification code."
+    end
+  end
+
+  def verify
+    unless session[:magic_link_identity_id]
+      redirect_to new_session_path, alert: "Please enter your email address first."
+    end
+  end
+
+  def confirm
+    identity = Identity.find_by(id: session[:magic_link_identity_id])
+
+    unless identity
+      redirect_to new_session_path, alert: "Session expired. Please start again."
+      return
+    end
+
+    code = identity.magic_link_codes.active.find_by(value: params.expect(:code)&.strip)
+
+    if code
+      code.destroy
+      session.delete(:magic_link_identity_id)
+      start_new_session_for(identity)
+      redirect_to session.delete(:return_to_after_authenticating) || root_path
+    else
+      redirect_to verify_session_path, alert: "Invalid or expired code. Please try again."
+    end
+  end
+
+  def destroy
+    terminate_session
+    redirect_to new_session_path, notice: "You have been signed out."
+  end
+
+  private
+
+  def rate_limited?(identity)
+    identity.magic_link_codes.where(created_at: RATE_WINDOW.ago..).count >= RATE_LIMIT
+  end
+end

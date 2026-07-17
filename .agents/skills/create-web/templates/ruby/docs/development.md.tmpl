@@ -1,0 +1,119 @@
+# Development
+
+## Prerequisites
+
+- Ruby {{RUBY_VERSION}} — use [mise](https://mise.jdx.dev/) or [rbenv](https://github.com/rbenv/rbenv)
+- SQLite3 (`apt install libsqlite3-dev` / `brew install sqlite`)
+- [Bundler](https://bundler.io/) (`gem install bundler`)
+- Optional: [overmind](https://github.com/DarthSim/overmind) or foreman for `bin/dev`
+
+## Setup
+
+```bash
+git clone https://github.com/{{GITHUB_USER}}/{{APP_NAME}}
+cd {{APP_NAME}}
+bin/setup
+```
+
+The setup script installs gems, creates and migrates the database, seeds development data, and installs git pre-commit hooks.
+
+## Start the development server
+
+```bash
+bin/dev
+```
+
+Visit [http://localhost:3000](http://localhost:3000).
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `bin/dev` | Start development server + background job worker |
+| `bin/rails test` | Run all tests |
+| `bin/rails test test/models` | Model tests only |
+| `bin/rails test test/controllers` | Controller tests only |
+| `bin/rails test:system` | System tests (browser) |
+| `bin/ci` | Full CI: rubocop + all tests |
+| `make lint` | Run rubocop |
+| `make lint-fix` | Auto-fix rubocop offenses |
+| `bin/rails routes` | List all routes |
+| `bin/rails console` | Open Rails console |
+| `bin/rails db:migrate` | Run pending migrations |
+| `bin/rails db:rollback` | Rollback last migration |
+| `make db-reset` | Drop, recreate, migrate, seed |
+| `make security` | Run brakeman static analysis |
+
+## Using MySQL
+
+Set `DATABASE_ADAPTER=mysql2` in your environment (or a `.env` file):
+
+```bash
+DATABASE_ADAPTER=mysql2 bin/setup
+DATABASE_ADAPTER=mysql2 bin/dev
+DATABASE_ADAPTER=mysql2 bin/ci
+```
+
+## Authentication in development
+
+Magic link verification codes are logged to the Rails console — no email server needed:
+
+```
+[SessionMailer] Magic link code for dev@example.com: 123456
+```
+
+The seed user is `dev@example.com`. Sign in at [http://localhost:3000/session/new](http://localhost:3000/session/new).
+
+## Architecture overview
+
+This project follows [37signals](https://37signals.com) conventions:
+
+| Concern | Convention |
+|---------|-----------|
+| Business logic | In models and concerns — never service objects |
+| Controllers | Thin orchestrators; CRUD-only action names |
+| State | Separate records (`Closure`, `Pin`) not boolean columns |
+| Routes | Strict `resources`/`resource`; nominalize verbs |
+| Frontend | Server-rendered ERB + Hotwire — not an SPA |
+| CSS | Native cascade layers — no Tailwind |
+| Jobs | Solid Queue — no Redis |
+| Auth | Magic links — no Devise |
+| Tests | Minitest + fixtures — no RSpec / FactoryBot |
+
+See `AGENTS.md` for the complete set of conventions.
+
+## Adding features
+
+**New model:**
+```bash
+bin/rails generate model Post title:string body:text user:references
+bin/rails db:migrate
+```
+
+**New CRUD resource:**
+```ruby
+# config/routes.rb
+resources :posts
+
+# app/controllers/posts_controller.rb
+class PostsController < ApplicationController
+  def index = @posts = Post.all
+  def show  = @post = Post.find(params[:id])
+  # ...
+end
+```
+
+**State as a record (37signals pattern):**
+```bash
+# "close a post" → Closure record, not closed_at boolean
+bin/rails generate model Closure post:references user:references
+```
+
+```ruby
+# config/routes.rb
+resources :posts do
+  scope module: :posts do
+    resource :closure
+  end
+end
+```

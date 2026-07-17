@@ -1,0 +1,15 @@
+return unless Rails.env.development?
+
+puts "Seeding development data..."
+
+identity = Identity.find_or_create_by!(email: "dev@example.com")
+user = identity.users.find_or_create_by!(display_name: "Dev User")
+
+puts "  ✓ Created identity: #{identity.email}"
+puts "  ✓ Created user:     #{user.display_name}"
+puts ""
+puts "Seeding complete."
+puts ""
+puts "Sign in at http://localhost:3000/session/new"
+puts "Use email: #{identity.email}"
+puts "(Check the Rails log for the verification code)"

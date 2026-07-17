@@ -1,0 +1,101 @@
+/* Accessibility-first reset */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Respect user motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html {
+  /* Use dynamic viewport height — avoids iOS Safari toolbar overlap */
+  block-size: 100%;
+}
+
+body {
+  min-block-size: 100dvh;
+  margin: 0;
+  /* Safe word-break — prevents content overflow on narrow viewports */
+  word-break: break-word;
+  /* Prevent font inflation on mobile */
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+/* Make media elements responsive */
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-inline-size: 100%;
+}
+
+/* Remove default form element font inheritance */
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+/* Auto-expand textareas with content */
+textarea:not([rows]) {
+  field-sizing: content;
+  min-block-size: 4lh;
+}
+
+/* Remove default list styles only when role is not list */
+ul:where([class]),
+ol:where([class]) {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Preserve focus indicators — never remove outline */
+:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* Ensure hidden attribute works */
+[hidden] {
+  display: none !important;
+}
+
+/* Remove default button styling */
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* Remove default anchor color inheritance issues */
+a {
+  color: inherit;
+}
+
+/* Headings — remove default margin */
+h1, h2, h3, h4, h5, h6 {
+  font-size: inherit;
+  font-weight: inherit;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}

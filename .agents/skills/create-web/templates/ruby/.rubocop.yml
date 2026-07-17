@@ -1,0 +1,17 @@
+inherit_gem:
+  rubocop-rails-omakase: rubocop.yml
+
+AllCops:
+  Exclude:
+    - "db/migrate/**/*"
+    - "db/schema.rb"
+    - "db/schema/*.rb"
+    - "bin/**/*"
+    - "node_modules/**/*"
+    - "vendor/**/*"
+
+Style/NegatedIf:
+  Enabled: true
+
+Style/NegatedUnless:
+  Enabled: true

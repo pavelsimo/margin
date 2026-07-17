@@ -1,0 +1,5 @@
+/* Establish cascade layer order — specificity is explicit, not accidental */
+@layer reset, base, layout, components, utilities;
+
+@import "reset.css" layer(reset);
+@import "base.css" layer(base);

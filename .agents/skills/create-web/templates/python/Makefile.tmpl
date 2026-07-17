@@ -1,0 +1,52 @@
+MODULE := {{APP_MODULE}}
+
+.PHONY: setup dev test lint fmt fmt-check ci db-migrate db-makemigrations db-rollback db-reset seed deploy clean
+
+setup:
+	uv sync --dev
+	uv run alembic upgrade head
+	uv run python -m $(MODULE).seed
+	uv run lefthook install
+
+dev:
+	uv run reflex run
+
+test:
+	uv run pytest
+
+lint:
+	uv run ruff check .
+	uv run mypy $(MODULE)/
+
+fmt:
+	uv run ruff format .
+	uv run ruff check --fix .
+
+fmt-check:
+	uv run ruff format --check .
+	uv run ruff check .
+
+ci: fmt-check lint test
+
+db-migrate:
+	uv run alembic upgrade head
+
+db-makemigrations:
+	uv run alembic revision --autogenerate -m "$(if $(m),$(m),update models)"
+
+db-rollback:
+	uv run alembic downgrade -1
+
+db-reset:
+	rm -f $(MODULE).db $(MODULE).db-wal $(MODULE).db-shm
+	uv run alembic upgrade head
+	uv run python -m $(MODULE).seed
+
+seed:
+	uv run python -m $(MODULE).seed
+
+deploy:
+	kamal deploy
+
+clean:
+	rm -rf .venv .web .ruff_cache .mypy_cache .pytest_cache htmlcov .coverage

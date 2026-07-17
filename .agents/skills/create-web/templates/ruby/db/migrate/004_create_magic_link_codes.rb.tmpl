@@ -1,0 +1,13 @@
+class CreateMagicLinkCodes < ActiveRecord::Migration[8.0]
+  def change
+    create_table :magic_link_codes, id: :uuid do |t|
+      t.references :identity, null: false, foreign_key: true, type: :uuid
+      t.string     :value,      null: false
+      t.datetime   :expires_at, null: false
+      t.timestamps
+    end
+
+    add_index :magic_link_codes, :expires_at
+    add_index :magic_link_codes, [ :identity_id, :created_at ]
+  end
+end

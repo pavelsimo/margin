@@ -1,0 +1,10 @@
+class Session < ApplicationRecord
+  belongs_to :identity
+  belongs_to :user
+
+  before_create { self.token_digest = SecureRandom.hex(32) }
+
+  def self.authenticate_by_token(token)
+    find_by(token_digest: token)
+  end
+end

@@ -1,0 +1,128 @@
+# Deployment
+
+This app deploys with [Kamal](https://kamal-deploy.org/) — Docker-based, zero-downtime deploys to any VPS.
+
+The production container runs two processes: Caddy on port 8080 serving the statically exported frontend (and proxying `/_event` websockets, `/up`, and `/api/*` to the backend), and the Reflex backend on port 8000.
+
+## Prerequisites
+
+- Docker installed locally
+- Kamal installed locally (`gem install kamal`)
+- A server (Ubuntu 22.04+ recommended) with SSH access
+- A container registry account (GitHub Container Registry is configured by default)
+- Optional: a domain name pointed at your server's IP (required for SSL)
+
+## First-time setup
+
+### 1. Configure your server and domain
+
+Edit `config/deploy.yml`:
+
+```yaml
+servers:
+  web:
+    - 1.2.3.4              # your server IP
+
+builder:
+  args:
+    API_URL: https://my-app.example.com   # public URL baked into the frontend
+
+proxy:
+  app_port: 8080
+  # ssl: true                     # uncomment to enable SSL
+  # host: my-app.example.com      # your domain
+```
+
+`API_URL` must match the public URL users will visit — the frontend uses it for the websocket connection and API calls. Without a domain, use `http://YOUR_SERVER_IP:8080`.
+
+### 2. Set secrets
+
+`.kamal/secrets` reads values from your environment — it contains only `$ENV` references and is safe to commit. Export the values before deploying:
+
+```bash
+export KAMAL_REGISTRY_PASSWORD=ghp_yourGitHubToken   # write:packages scope
+export SMTP_USERNAME=your_smtp_username
+export SMTP_PASSWORD=your_smtp_password
+```
+
+### 3. Configure email
+
+Magic link sign-in emails need an SMTP provider in production. Uncomment and fill in `config/deploy.yml`:
+
+```yaml
+env:
+  clear:
+    MAILER_FROM_ADDRESS: noreply@my-app.example.com
+    SMTP_ADDRESS: smtp.example.com
+    SMTP_PORT: "587"
+```
+
+Until SMTP is configured, codes are logged to the container output (`kamal logs`).
+
+### 4. Bootstrap the server
+
+```bash
+kamal setup
+```
+
+This installs Docker on the server, configures the proxy, and runs your first deploy.
+
+### 5. Subsequent deploys
+
+```bash
+kamal deploy
+# or
+make deploy
+```
+
+## CI/CD (automatic deploys)
+
+The `.github/workflows/deploy.yml` workflow deploys automatically on every push to `main`.
+
+Required GitHub repository secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `DEPLOY_KEY` | SSH private key with access to your server |
+| `KAMAL_REGISTRY_PASSWORD` | GitHub token with `write:packages` scope |
+| `SMTP_USERNAME` | SMTP username |
+| `SMTP_PASSWORD` | SMTP password |
+
+## Environment variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | No | `sqlite:////data/{{APP_MODULE}}.db` | SQLAlchemy database URL |
+| `MAILER_FROM_ADDRESS` | No | `noreply@example.com` | Sender email |
+| `SMTP_ADDRESS` | No | — | SMTP server host (codes are logged when unset) |
+| `SMTP_PORT` | No | `587` | SMTP port |
+| `SMTP_USERNAME` | No | — | SMTP username |
+| `SMTP_PASSWORD` | No | — | SMTP password |
+
+## Database
+
+The SQLite database lives on the `{{APP_MODULE}}_data` Docker volume mounted at `/data` — it survives deploys and container restarts. WAL mode is enabled automatically (see `{{APP_MODULE}}/db.py`), so concurrent readers never block and concurrent writes queue via `busy_timeout`.
+
+Migrations run automatically on container start (`bin/docker-entrypoint`).
+
+To back up: `kamal server exec "docker run --rm -v {{APP_MODULE}}_data:/data -v /tmp:/backup alpine tar czf /backup/db.tar.gz /data"` and copy the archive off the server.
+
+## Scaling note
+
+This setup intentionally runs a **single backend process** — Reflex keeps per-client state in memory. That is plenty for most single-server apps. If you ever need multiple backend workers or servers, add Redis and set `REFLEX_REDIS_URL`; until then, don't.
+
+## Useful Kamal commands
+
+```bash
+kamal logs              # tail production logs
+kamal shell             # shell into the running container (alias)
+kamal dbc               # sqlite3 console on the production database (alias)
+kamal deploy            # deploy latest main
+kamal rollback          # roll back to previous version
+kamal app restart       # restart app containers
+```
+
+## Health check
+
+Kamal monitors `GET /up` — the FastAPI app returns `200 OK` when ready.
+If the health check fails after deploy, Kamal automatically rolls back.

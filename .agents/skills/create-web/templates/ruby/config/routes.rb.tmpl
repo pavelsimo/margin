@@ -1,0 +1,26 @@
+Rails.application.routes.draw do
+  # Authentication — magic link flow
+  resource :session, only: %i[new create destroy] do
+    get  :verify
+    post :confirm
+  end
+
+  # Health check endpoint (Kamal uses this to verify the app is running)
+  get "up" => "rails/health#show", as: :rails_health_check
+
+  # Add your application routes here.
+  # Follow the 37signals CRUD-only convention:
+  #   - Nominalize verbs: "close" → resource :closure
+  #   - Module scope for nested controllers: scope module: :posts do...end
+  #   - Shallow nesting: avoid URLs deeper than 2 levels
+  #
+  # Example:
+  #   root "posts#index"
+  #
+  #   resources :posts do
+  #     scope module: :posts do
+  #       resource :closure, :pin
+  #       resources :comments
+  #     end
+  #   end
+end

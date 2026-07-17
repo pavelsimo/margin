@@ -1,0 +1,69 @@
+<%
+  adapter = ENV.fetch("DATABASE_ADAPTER", "{{DATABASE}}")
+  mysql   = adapter.start_with?("mysql")
+%>
+
+default: &default
+  adapter: <%= adapter %>
+<% if mysql %>
+  encoding: utf8mb4
+  username: <%= ENV.fetch("DB_USERNAME", "root") %>
+  password: <%= ENV["DB_PASSWORD"] %>
+  host:     <%= ENV.fetch("DB_HOST", "localhost") %>
+  port:     <%= ENV.fetch("DB_PORT", 3306) %>
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+<% else %>
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  timeout: 5000
+<% end %>
+
+development:
+  <<: *default
+<% if mysql %>
+  database: {{APP_MODULE}}_development
+<% else %>
+  database: storage/development.sqlite3
+<% end %>
+
+test:
+  <<: *default
+<% if mysql %>
+  database: {{APP_MODULE}}_test
+<% else %>
+  database: storage/test.sqlite3
+<% end %>
+
+production:
+<% if mysql %>
+  primary:
+    <<: *default
+    database: {{APP_MODULE}}_production
+  cache:
+    <<: *default
+    database: {{APP_MODULE}}_production_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *default
+    database: {{APP_MODULE}}_production_queue
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *default
+    database: {{APP_MODULE}}_production_cable
+    migrations_paths: db/cable_migrate
+<% else %>
+  primary:
+    <<: *default
+    database: storage/production.sqlite3
+  cache:
+    <<: *default
+    database: storage/production_cache.sqlite3
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *default
+    database: storage/production_queue.sqlite3
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *default
+    database: storage/production_cable.sqlite3
+    migrations_paths: db/cable_migrate
+<% end %>

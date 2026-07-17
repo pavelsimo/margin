@@ -1,0 +1,239 @@
+# {{APP_NAME_HUMAN}} — Agent Instructions
+
+## Overview
+
+{{DESCRIPTION}}
+
+Ruby on Rails 8.x · 37signals architecture · Passwordless auth · Hotwire frontend
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Language | Ruby {{RUBY_VERSION}} / Rails 8.x |
+| Database | {{DATABASE}} (Solid Queue/Cache/Cable — no Redis) |
+| Frontend | Hotwire (Turbo + Stimulus) + importmap-rails (no Node.js bundler) |
+| CSS | Native CSS with cascade layers (no Tailwind, no preprocessors) |
+| Auth | Passwordless magic links (no Devise) — ~150 lines |
+| Jobs | Solid Queue (database-backed) |
+| Deploy | Kamal (containers) |
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `bin/setup` | Install gems, create and migrate database, install git hooks |
+| `bin/dev` | Start development server (localhost:3000) |
+| `bin/rails test` | Run all tests |
+| `bin/rails test test/models` | Model tests only |
+| `bin/rails test test/controllers` | Controller tests only |
+| `bin/rails test:system` | System/browser tests (Capybara + Selenium) |
+| `bin/ci` | Full CI suite: rubocop + tests |
+| `make lint` | Run rubocop |
+| `make lint-fix` | Auto-fix rubocop offenses |
+| `bin/rails routes` | List all routes |
+| `bin/rails console` | Rails console |
+| `bin/rails db:migrate` | Run pending migrations |
+| `bin/rails generate model X` | Generate model + migration |
+| `make security` | Run brakeman static analysis |
+| `make deploy` | Deploy to production via Kamal |
+
+## The Seven Principles (37signals)
+
+1. **Rich domain models** over service objects
+2. **CRUD controllers** over custom actions
+3. **Concerns** for horizontal code sharing
+4. **Records as state** over boolean columns
+5. **Database-backed infrastructure** (no Redis)
+6. **Build it yourself** before adopting gems
+7. **Ship to learn**; validate; iterate
+
+## Architecture Rules
+
+### Models
+
+- Business logic lives here — NOT in service objects, NOT in controllers
+- Use `ActiveSupport::Concern` to share logic across models
+- State is a separate record, not a boolean column:
+  - "closed" → `has_one :closure` (not `closed_at:datetime`)
+  - "pinned" → `has_one :pin` (not `pinned:boolean`)
+  - "published" → `has_one :publication` (not `published:boolean`)
+- Associations referencing `Current.*` use `default: -> { Current.user }` lambda
+- Use `normalizes` for data cleanup (Rails 7.1+): `normalizes :email, with: ->(e) { e.strip.downcase }`
+- Use bang methods (`create!`, `save!`, `update!`) — let it crash on unexpected failures
+- **Never soft-delete** — permanently destroy records; use event log for audit trail if needed
+- UUIDs are configured globally in `config/application.rb` — all models get UUID primary keys
+- `implicit_order_column = "created_at"` set on `ApplicationRecord`
+
+### Controllers
+
+- Thin: orchestrate the request/response cycle; delegate all logic to models
+- **No custom action names** — nominalize all verbs:
+  - "close a post" → `resource :closure` (POST creates it, DELETE removes it)
+  - "watch a thread" → `resource :watch`
+  - "pin a message" → `resource :pin`
+  - "publish a draft" → `resource :publication`
+- Use `params.expect(model: [:field1, :field2])` (Rails 7.1+), not `params.require.permit`
+- Enforce authorization in `before_action` callbacks; models define the predicate methods
+- Respond to multiple formats: `respond_to { |f| f.html; f.turbo_stream; f.json }`
+
+### Routing
+
+- Strict `resources`/`resource` blocks only — no custom action names
+- Shallow nesting preferred over deep hierarchies
+- Module scope to namespace controllers without changing URLs:
+  ```ruby
+  resources :posts do
+    scope module: :posts do
+      resource :closure, :pin, :publication
+      resources :comments
+    end
+  end
+  ```
+
+### Views
+
+- Server-rendered ERB — Turbo handles partial page updates — **this is NOT an SPA**
+- Always pass locals explicitly to partials: `render "partial", local_var: value`
+- Use `dom_id(record)` for predictable element IDs: `dom_id(@post)` → `"post_1"`
+- Turbo Streams for targeted DOM mutations: `.append`, `.prepend`, `.replace`, `.remove`
+- Turbo Frames for independent navigation zones and lazy-loading content
+
+### CSS
+
+- **Native CSS only** — no Sass, PostCSS, Tailwind, Bootstrap, or other preprocessors
+- Cascade layers: `@layer reset, base, layout, components, utilities;`
+- Colors in OKLCH: `--color-primary: oklch(55% 0.18 250deg);`
+- Dark mode via `@media (prefers-color-scheme: dark)` flipping OKLCH lightness values
+- Use modern CSS: `color-mix()`, `:has()`, `@starting-style`, container queries, logical properties
+- One concern per stylesheet file (~80 component files, ~60 utility classes in a mature app)
+
+### JavaScript / Stimulus
+
+- **Modest ambitions** — augment HTML, never replace server rendering
+- Each Stimulus controller handles exactly ONE thing
+- Configure via `static values = { url: String }` not `data.getAttribute(...)`
+- Always implement `disconnect()` to clean up timers and event listeners
+- Controllers communicate via custom events, not direct method calls between controllers
+- Use `app/javascript/helpers/` for shared utilities
+
+### Background Jobs
+
+- Solid Queue — database-backed, no Redis required in any environment
+- Jobs invoke model methods — zero business logic in the job class itself
+- Async model method naming: `notify_later` enqueues → `notify` is the model method called by the job
+- `self.enqueue_after_transaction_commit = true` on `ApplicationJob` to prevent race conditions
+
+### Authentication
+
+- Built-in magic link flow — do NOT add Devise
+- `Identity` = global email address; `User` = app-specific role/profile
+- 6-digit codes with 15-minute expiration; 10 requests per 15 minutes rate limit
+- `Authentication` concern in `app/controllers/concerns/authentication.rb` — the single source of truth
+- `Current.session` and `Current.user` available everywhere via `ApplicationController`
+
+### Authorization
+
+- No Pundit, no CanCanCan — predicate methods on models
+- Pattern:
+  ```ruby
+  # Model defines what the permission means
+  def can_edit?(user)
+    creator == user || user.admin?
+  end
+
+  # Controller enforces it
+  before_action :require_edit_permission
+  def require_edit_permission
+    redirect_to root_path unless @post.can_edit?(current_user)
+  end
+  ```
+
+### Testing
+
+- **Minitest only** — no RSpec
+- **Fixtures only** — no FactoryBot; `fixtures :all` in `test_helper.rb`
+- Use `assert_difference`, `travel_to`, `assert_enqueued_with`, `assert_emails`
+- System tests via Capybara + Selenium for full browser-level flows
+- Tests ship in the same commit as the feature they cover
+
+### Migrations
+
+- UUID primary keys on every table: `create_table :posts, id: :uuid do |t|`
+- Always add indexes for foreign keys, filter columns, and sort columns
+- Prefer `null: false` constraints at the database level
+- Use `t.references :user, null: false, foreign_key: true, type: :uuid` for UUID FKs
+- Never soft-delete columns (no `deleted_at`, no `archived`)
+
+## Dependencies to AVOID
+
+| Avoid | Use instead |
+|-------|------------|
+| Devise | `app/controllers/concerns/authentication.rb` (already in this repo) |
+| Pundit / CanCanCan | Predicate methods on models enforced via `before_action` |
+| Service objects | Rich models with `ActiveSupport::Concern` mixins |
+| Form objects | `params.expect()` + model validations |
+| ViewComponent | ERB partials with explicit `locals:` |
+| Draper / decorators | View helpers and focused partials |
+| FactoryBot | Fixtures (`test/fixtures/*.yml`) |
+| RSpec | Minitest (`test/**/*_test.rb`) |
+| Tailwind CSS | Native CSS in `app/assets/stylesheets/` |
+| Sidekiq | Solid Queue (already configured) |
+| Redis | Solid Queue (jobs) + Solid Cache + Solid Cable (all configured) |
+| React / Vue / SPA | Turbo + Stimulus + server-rendered HTML |
+| GraphQL | REST endpoints + Turbo Streams |
+| ActiveAdmin | Build a custom admin interface with standard CRUD controllers |
+
+## File Structure
+
+```
+app/
+├── assets/stylesheets/     # Native CSS (reset → base → layout → components → utilities)
+├── channels/               # ActionCable channels (Solid Cable backend)
+├── controllers/
+│   ├── concerns/
+│   │   └── authentication.rb   # Magic link auth — the single auth source of truth
+│   └── sessions_controller.rb  # Login / verify / logout
+├── javascript/
+│   ├── application.js          # Import Turbo + Stimulus
+│   └── controllers/            # Stimulus controllers (one concern per file)
+├── jobs/                   # Solid Queue jobs (shallow — call model methods only)
+├── mailers/                # Email composition
+├── models/
+│   ├── concerns/           # Shared model logic (Closeable, Pinnable, etc.)
+│   ├── application_record.rb   # UUID keys, implicit_order_column
+│   ├── current.rb          # Thread-local request context (CurrentAttributes)
+│   ├── identity.rb         # Global login identity (email address)
+│   ├── magic_link_code.rb  # Time-limited 6-digit codes
+│   ├── session.rb          # Authenticated user session
+│   └── user.rb             # Application user (scoped to this app)
+└── views/
+    ├── layouts/
+    ├── sessions/           # Login + verify views
+    └── shared/             # Flash, nav, etc.
+config/
+├── application.rb          # UUID keys, Solid adapters, locale
+├── routes.rb               # CRUD-only resource routing
+├── database.yml            # SQLite default; MySQL via DATABASE_ADAPTER env
+├── importmap.rb            # JS package mapping (no bundler)
+├── cable.yml               # Solid Cable config
+├── cache.yml               # Solid Cache config
+└── queue.yml               # Solid Queue config
+```
+
+## Commit Convention
+
+Gitmoji + lowercase imperative:
+
+| Prefix | When to use |
+|--------|-------------|
+| `🎉 init:` | First commit only |
+| `✨ add:` | New feature or capability |
+| `🐛 fix:` | Bug fix |
+| `♻️ refactor:` | Restructure without behavior change |
+| `🧪 test:` | Add or update tests |
+| `📝 docs:` | Documentation only |
+| `⚡ perf:` | Performance improvement |
+| `🔒 security:` | Security fix |
+| `⬆️ upgrade:` | Dependency upgrade |
+| `🗑️ remove:` | Delete code or files |
