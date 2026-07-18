@@ -1,7 +1,8 @@
 import { accessSync, constants, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join } from 'node:path'
+import { basename, delimiter, dirname, isAbsolute, join, sep } from 'node:path'
 import { PROVIDER_COMMANDS, PROVIDER_ENV_VARS, PROVIDERS, type Provider } from '@shared/constants'
-import type { CliExecutableInfo, CliExecutableSettings } from '@shared/ipc'
+import type { CliExecutableInfo, CliExecutableSettings, ExecutableSource } from '@shared/ipc'
+import { cliEnvironment } from './aiCore'
 
 interface StoredSettings {
   cliExecutables?: Partial<Record<Provider, string>>
@@ -21,6 +22,42 @@ function parseSettings(raw: string): StoredSettings {
   return { cliExecutables }
 }
 
+export function isExecutableFile(path: string, platform: NodeJS.Platform = process.platform): boolean {
+  try {
+    if (!statSync(path).isFile()) return false
+    // Windows has no executable bit; PATHEXT resolution is out of scope.
+    if (platform !== 'win32') accessSync(path, constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function resolveCommandOnPath(
+  command: string,
+  searchPath: string,
+  isExecutable: (path: string) => boolean = isExecutableFile,
+): string {
+  for (const directory of searchPath.split(delimiter).filter(Boolean)) {
+    const candidate = join(directory, command)
+    if (isExecutable(candidate)) return candidate
+  }
+  return ''
+}
+
+export function detectExecutable(
+  info: { effectiveCommand: string; source: ExecutableSource },
+  searchPath: string,
+  isExecutable: (path: string) => boolean = isExecutableFile,
+): { detected: boolean; resolvedPath: string } {
+  const command = info.effectiveCommand
+  if (isAbsolute(command) || command.includes(sep)) {
+    return isExecutable(command) ? { detected: true, resolvedPath: command } : { detected: false, resolvedPath: '' }
+  }
+  const resolvedPath = resolveCommandOnPath(command, searchPath, isExecutable)
+  return { detected: Boolean(resolvedPath), resolvedPath }
+}
+
 export class ExecutableSettingsStore {
   private customPaths: Partial<Record<Provider, string>>
 
@@ -29,6 +66,7 @@ export class ExecutableSettingsStore {
     private readonly env: NodeJS.ProcessEnv = process.env,
     private readonly platform: NodeJS.Platform = process.platform,
     private readonly warn: (message: string) => void = console.warn,
+    private readonly searchPath: () => string = () => cliEnvironment(env, undefined, platform).PATH ?? '',
   ) {
     this.customPaths = this.load()
   }
@@ -38,6 +76,11 @@ export class ExecutableSettingsStore {
   }
 
   get(provider: Provider): CliExecutableInfo {
+    const base = this.base(provider)
+    return { ...base, ...detectExecutable(base, this.searchPath(), (path) => isExecutableFile(path, this.platform)) }
+  }
+
+  private base(provider: Provider): Omit<CliExecutableInfo, 'detected' | 'resolvedPath'> {
     const customPath = this.customPaths[provider] ?? ''
     if (customPath) return { customPath, effectiveCommand: customPath, source: 'custom' }
 

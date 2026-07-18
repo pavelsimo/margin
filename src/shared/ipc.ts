@@ -84,6 +84,9 @@ export interface CliExecutableInfo {
   customPath: string
   effectiveCommand: string
   source: ExecutableSource
+  detected: boolean
+  /** Absolute path of the detected executable, or '' when not detected. */
+  resolvedPath: string
 }
 
 export type CliExecutableSettings = Record<Provider, CliExecutableInfo>
@@ -119,7 +122,7 @@ export interface AppWindowState {
   canGoForward: boolean
 }
 
-// invoke() channels — request/response
+// invoke() channels: request/response
 export interface IpcApi {
   'app:command': (command: AppCommand) => void
   'app:getWindowState': () => AppWindowState
@@ -128,6 +131,11 @@ export interface IpcApi {
   'library:delete': (docId: number) => void
   'document:get': (docId: number) => DocumentInfo
   'page:get': (req: { docId: number; number: number }) => PageData
+  'page:renderRegion': (req: {
+    docId: number
+    pageNumber: number
+    bbox: [number, number, number, number] // normalized 0-1 fractions
+  }) => string | null // PNG data URL, null when unavailable
   'chat:history': (docId: number) => UiMessage[]
   'chat:send': (req: ChatSendRequest) => ChatSendResult
   'chat:stop': (requestId: string) => boolean

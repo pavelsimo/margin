@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { rmSync } from 'node:fs'
-import { ExecutableSettingsStore } from './executableSettingsCore'
+import { detectExecutable, ExecutableSettingsStore, isExecutableFile, resolveCommandOnPath } from './executableSettingsCore'
 
 const temporaryDirectories: string[] = []
 
@@ -24,20 +24,116 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true })
 })
 
+function store(settingsPath: string, env: NodeJS.ProcessEnv = {}, searchPath = ''): ExecutableSettingsStore {
+  return new ExecutableSettingsStore(settingsPath, env, 'linux', undefined, () => searchPath)
+}
+
+describe('isExecutableFile', () => {
+  it('accepts executable files and rejects missing files, directories, and non-executables', () => {
+    const directory = tempDirectory()
+    const nonExecutable = join(directory, 'plain')
+    writeFileSync(nonExecutable, 'plain text')
+    chmodSync(nonExecutable, 0o644)
+
+    expect(isExecutableFile(executable(directory, 'claude'), 'linux')).toBe(true)
+    expect(isExecutableFile(join(directory, 'missing'), 'linux')).toBe(false)
+    expect(isExecutableFile(directory, 'linux')).toBe(false)
+    expect(isExecutableFile(nonExecutable, 'linux')).toBe(false)
+  })
+
+  it('skips the executable-bit check on Windows', () => {
+    const directory = tempDirectory()
+    const nonExecutable = join(directory, 'plain')
+    writeFileSync(nonExecutable, 'plain text')
+    chmodSync(nonExecutable, 0o644)
+
+    expect(isExecutableFile(nonExecutable, 'win32')).toBe(true)
+  })
+})
+
+describe('resolveCommandOnPath', () => {
+  it('returns the first matching executable across PATH entries', () => {
+    const first = tempDirectory()
+    const second = tempDirectory()
+    const firstPath = executable(first, 'claude')
+    executable(second, 'claude')
+
+    const searchPath = [join(first, 'missing'), first, second].join(':')
+    expect(resolveCommandOnPath('claude', searchPath, (path) => isExecutableFile(path, 'linux'))).toBe(firstPath)
+  })
+
+  it('skips non-executable matches and returns empty when nothing is found', () => {
+    const directory = tempDirectory()
+    const nonExecutable = join(directory, 'claude')
+    writeFileSync(nonExecutable, 'plain text')
+    chmodSync(nonExecutable, 0o644)
+    const isExecutable = (path: string) => isExecutableFile(path, 'linux')
+
+    expect(resolveCommandOnPath('claude', directory, isExecutable)).toBe('')
+    expect(resolveCommandOnPath('claude', '', isExecutable)).toBe('')
+  })
+})
+
+describe('detectExecutable', () => {
+  const isExecutable = (path: string) => isExecutableFile(path, 'linux')
+
+  it('checks absolute commands directly, ignoring the search path', () => {
+    const directory = tempDirectory()
+    const claudePath = executable(directory, 'claude')
+    const onPath = tempDirectory()
+    executable(onPath, 'claude')
+
+    expect(detectExecutable({ effectiveCommand: claudePath, source: 'custom' }, '', isExecutable))
+      .toEqual({ detected: true, resolvedPath: claudePath })
+    expect(detectExecutable({ effectiveCommand: join(directory, 'missing'), source: 'environment' }, onPath, isExecutable))
+      .toEqual({ detected: false, resolvedPath: '' })
+  })
+
+  it('resolves bare commands against the search path', () => {
+    const directory = tempDirectory()
+    const claudePath = executable(directory, 'claude')
+
+    expect(detectExecutable({ effectiveCommand: 'claude', source: 'path' }, directory, isExecutable))
+      .toEqual({ detected: true, resolvedPath: claudePath })
+    expect(detectExecutable({ effectiveCommand: 'claude', source: 'environment' }, directory, isExecutable))
+      .toEqual({ detected: true, resolvedPath: claudePath })
+    expect(detectExecutable({ effectiveCommand: 'claude', source: 'path' }, '', isExecutable))
+      .toEqual({ detected: false, resolvedPath: '' })
+  })
+})
+
 describe('ExecutableSettingsStore', () => {
   it('defaults each provider to its command on the system PATH', () => {
-    const settings = new ExecutableSettingsStore(join(tempDirectory(), 'settings.json'), {}, 'linux')
+    const settings = store(join(tempDirectory(), 'settings.json'))
 
-    expect(settings.get('claude')).toEqual({ customPath: '', effectiveCommand: 'claude', source: 'path' })
-    expect(settings.get('codex')).toEqual({ customPath: '', effectiveCommand: 'codex', source: 'path' })
-    expect(settings.get('antigravity')).toEqual({ customPath: '', effectiveCommand: 'agy', source: 'path' })
+    expect(settings.get('claude')).toEqual({ customPath: '', effectiveCommand: 'claude', source: 'path', detected: false, resolvedPath: '' })
+    expect(settings.get('codex')).toEqual({ customPath: '', effectiveCommand: 'codex', source: 'path', detected: false, resolvedPath: '' })
+    expect(settings.get('antigravity')).toEqual({ customPath: '', effectiveCommand: 'agy', source: 'path', detected: false, resolvedPath: '' })
+  })
+
+  it('detects commands found on the injected search path', () => {
+    const binDirectory = tempDirectory()
+    const claudePath = executable(binDirectory, 'claude')
+    const settings = store(join(tempDirectory(), 'settings.json'), {}, binDirectory)
+
+    expect(settings.get('claude')).toMatchObject({ source: 'path', detected: true, resolvedPath: claudePath })
+    expect(settings.get('codex')).toMatchObject({ source: 'path', detected: false, resolvedPath: '' })
+  })
+
+  it('detects custom executables without consulting the search path', () => {
+    const directory = tempDirectory()
+    const claudePath = executable(directory, 'claude-custom')
+    const settings = store(join(directory, 'settings.json'))
+
+    settings.set('claude', claudePath)
+
+    expect(settings.get('claude')).toMatchObject({ source: 'custom', detected: true, resolvedPath: claudePath })
   })
 
   it('uses provider environment variables when no custom path is saved', () => {
-    const settings = new ExecutableSettingsStore(
+    const settings = store(
       join(tempDirectory(), 'settings.json'),
       { CLAUDE_BIN: '/environment/claude', CODEX_BIN: '/environment/codex', AGY_BIN: '/environment/agy' },
-      'linux',
     )
 
     expect(settings.get('claude')).toMatchObject({ effectiveCommand: '/environment/claude', source: 'environment' })
@@ -51,14 +147,14 @@ describe('ExecutableSettingsStore', () => {
     const claudePath = executable(directory, 'claude-custom')
     const codexPath = executable(directory, 'codex-custom')
     const env = { CLAUDE_BIN: '/environment/claude', CODEX_BIN: '/environment/codex' }
-    const settings = new ExecutableSettingsStore(settingsPath, env, 'linux')
+    const settings = store(settingsPath, env)
 
     settings.set('claude', claudePath)
     settings.set('codex', codexPath)
 
-    expect(settings.get('claude')).toEqual({ customPath: claudePath, effectiveCommand: claudePath, source: 'custom' })
-    expect(settings.get('codex')).toEqual({ customPath: codexPath, effectiveCommand: codexPath, source: 'custom' })
-    const reloaded = new ExecutableSettingsStore(settingsPath, env, 'linux')
+    expect(settings.get('claude')).toEqual({ customPath: claudePath, effectiveCommand: claudePath, source: 'custom', detected: true, resolvedPath: claudePath })
+    expect(settings.get('codex')).toEqual({ customPath: codexPath, effectiveCommand: codexPath, source: 'custom', detected: true, resolvedPath: codexPath })
+    const reloaded = store(settingsPath, env)
     expect(reloaded.get('claude').effectiveCommand).toBe(claudePath)
     expect(reloaded.get('codex').effectiveCommand).toBe(codexPath)
   })
@@ -66,7 +162,7 @@ describe('ExecutableSettingsStore', () => {
   it('resets one provider without changing the other', () => {
     const directory = tempDirectory()
     const settingsPath = join(directory, 'settings.json')
-    const settings = new ExecutableSettingsStore(settingsPath, {}, 'linux')
+    const settings = store(settingsPath)
     settings.set('claude', executable(directory, 'claude-custom'))
     const codexPath = executable(directory, 'codex-custom')
     settings.set('codex', codexPath)
@@ -83,7 +179,7 @@ describe('ExecutableSettingsStore', () => {
     const settingsPath = join(directory, 'settings.json')
     writeFileSync(settingsPath, '{bad json')
     const warnings: string[] = []
-    const settings = new ExecutableSettingsStore(settingsPath, {}, 'linux', (message) => warnings.push(message))
+    const settings = new ExecutableSettingsStore(settingsPath, {}, 'linux', (message) => warnings.push(message), () => '')
 
     expect(settings.get('claude').source).toBe('path')
     expect(warnings).toHaveLength(1)
@@ -94,7 +190,7 @@ describe('ExecutableSettingsStore', () => {
 
   it('rejects relative, missing, directory, and non-executable paths without replacing the saved value', () => {
     const directory = tempDirectory()
-    const settings = new ExecutableSettingsStore(join(directory, 'settings.json'), {}, 'linux')
+    const settings = store(join(directory, 'settings.json'))
     const savedPath = executable(directory, 'claude-custom')
     settings.set('claude', savedPath)
     const nonExecutable = join(directory, 'not-executable')

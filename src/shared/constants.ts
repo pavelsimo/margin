@@ -9,7 +9,7 @@ export const PROVIDER_LABELS: Record<Provider, string> = {
   antigravity: 'Antigravity',
 }
 
-// "" means "let the CLI use its configured default" — no flag is passed.
+// "" means "let the CLI use its configured default": no flag is passed.
 // Antigravity's --model takes the display names printed by `agy models`.
 export const PROVIDER_MODELS: Record<Provider, string[]> = {
   claude: ['', 'fable', 'opus', 'sonnet', 'haiku'],

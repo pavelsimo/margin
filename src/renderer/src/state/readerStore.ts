@@ -6,6 +6,7 @@ import {
   IMAGE_MODE_QUESTIONS,
   MODE_LABELS,
   MODE_QUESTIONS,
+  PROVIDERS,
   REGION_MODE_QUESTIONS,
   ZOOM_LEVELS,
   type Mode,
@@ -77,6 +78,7 @@ interface ReaderStore {
   selectedRegionPage: number
   selectedText: string
   selectedKind: string
+  selectionThumb: string
 
   messages: DisplayMessage[]
   historyGeneration: number
@@ -87,11 +89,13 @@ interface ReaderStore {
   chipRegionPage: number
   chipLabel: string
   chipBlockCount: number
+  chipThumb: string
   typing: boolean
   activeRequestId: string
   scope: 'page' | 'document'
   zoom: number
   ai: AiChoice
+  detectedProviders: Provider[] | null
 
   loadReader: (docId: number) => Promise<void>
   loadPage: (number: number) => Promise<void>
@@ -115,6 +119,7 @@ interface ReaderStore {
   chooseAiProvider: (provider: Provider) => Promise<void>
   chooseAiModel: (model: string) => Promise<void>
   chooseAiEffort: (effort: string) => Promise<void>
+  refreshDetectedProviders: () => Promise<void>
 }
 
 const clearedSelection = {
@@ -124,6 +129,7 @@ const clearedSelection = {
   selectedRegionPage: 0,
   selectedText: '',
   selectedKind: '',
+  selectionThumb: '',
 }
 
 const clearedChip = {
@@ -133,25 +139,56 @@ const clearedChip = {
   chipRegionPage: 0,
   chipLabel: '',
   chipBlockCount: 0,
+  chipThumb: '',
 }
+
+// Invalidates in-flight thumbnail renders when the selection or chip changes underneath them.
+let thumbSeq = 0
 
 export const useReaderStore = create<ReaderStore>((set, get) => {
   function applySelection(result: SelectionResult): void {
     const { pageBlocks } = get()
+    thumbSeq++
     const selectedBlockIds = normalizeSelection(pageBlocks, result.blockIds)
     const selected = pageBlocks.filter((block) => selectedBlockIds.includes(block.id))
     if (!selected.length) {
       set({ ...clearedSelection })
       return
     }
+    const selectedText = selectionText(pageBlocks, selectedBlockIds)
     set({
       selectedRegion: [],
       selectedRegionPage: 0,
       selectedBlockIds,
       selectionAnchorId: result.anchorId,
-      selectedText: selectionText(pageBlocks, selectedBlockIds),
+      selectedText,
       selectedKind: selected.length === 1 ? selected[0].kind : '',
+      selectionThumb: '',
     })
+    // No extractable text means a figure/table; preview it in the chat panel.
+    if (!selectedText.trim()) {
+      const first = selected[0]
+      loadThumb(get().currentPage, [first.x0, first.y0, first.x1, first.y1])
+    }
+  }
+
+  // Fetches a small PNG of the region and attaches it to whichever of the
+  // selection preview or the pinned chip is still current when it resolves.
+  function loadThumb(pageNumber: number, bbox: number[]): void {
+    const seq = ++thumbSeq
+    void window.margin
+      .invoke('page:renderRegion', {
+        docId: get().documentId,
+        pageNumber,
+        bbox: bbox as [number, number, number, number],
+      })
+      .then((thumb) => {
+        if (!thumb || seq !== thumbSeq) return
+        const state = get()
+        if (state.selectedBlockIds.length || state.selectedRegion.length === 4) set({ selectionThumb: thumb })
+        else if (state.chipBlockId || state.chipRegion.length === 4) set({ chipThumb: thumb })
+      })
+      .catch(() => {}) // best-effort; the text label alone is fine
   }
 
   function figureLabel(): string {
@@ -182,7 +219,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
     }
     const imageLabel = opts.imageLabel || state.chipLabel
     const contextText = opts.contextOverride || state.chipText.trim()
-    // the figure label is display-only — never pass it as selected text
+    // the figure label is display-only; never pass it as selected text
     const displayCtx = contextText || (imageBlockId || imageRegion.length === 4 ? imageLabel : '')
 
     const draft = draftRow(requestId)
@@ -291,6 +328,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
     scope: 'page',
     zoom: 100,
     ai: { provider: 'claude', model: '', effort: '' },
+    detectedProviders: null,
 
     loadReader: async (docId) => {
       const activeRequestId = get().activeRequestId
@@ -314,6 +352,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
         activeRequestId: '',
         zoom: 100,
       })
+      void get().refreshDetectedProviders()
       await get().loadPage(1)
     },
 
@@ -366,24 +405,33 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
       const request = parseRegionPayload(payload)
       if (!request) return
       if (request.kind === 'region') {
+        const region = [request.x0, request.y0, request.x1, request.y1]
         set({
           selectedBlockIds: [],
           selectionAnchorId: 0,
           selectedText: '',
           selectedKind: '',
-          selectedRegion: [request.x0, request.y0, request.x1, request.y1],
+          selectedRegion: region,
           selectedRegionPage: get().currentPage,
+          selectionThumb: '',
         })
+        loadThumb(get().currentPage, region)
         return
       }
       const { pageBlocks, selectedBlockIds, selectionAnchorId } = get()
       applySelection(regionSelection(pageBlocks, selectedBlockIds, selectionAnchorId, request.ids, request.additive))
     },
 
-    clearSelection: () => set({ ...clearedSelection }),
+    clearSelection: () => {
+      thumbSeq++
+      set({ ...clearedSelection })
+    },
     setScope: (scope) => set({ scope }),
     setInput: (inputText) => set({ inputText }),
-    clearChip: () => set({ ...clearedChip }),
+    clearChip: () => {
+      thumbSeq++
+      set({ ...clearedChip })
+    },
 
     askSelection: () => {
       // Pin the selected blocks or exact region and let the user type the question.
@@ -394,6 +442,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
           chipRegion: [...state.selectedRegion],
           chipRegionPage: state.selectedRegionPage,
           chipLabel: `Region · page ${state.selectedRegionPage}`,
+          chipThumb: state.selectionThumb,
           ...clearedSelection,
         })
         return
@@ -407,18 +456,19 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
           ...clearedSelection,
         })
       } else {
-        // no extractable text — pin the block itself, sent later as a cropped image
+        // no extractable text; pin the block itself, sent later as a cropped image
         set({
           ...clearedChip,
           chipBlockId: state.selectedBlockIds[0],
           chipLabel: figureLabel(),
+          chipThumb: state.selectionThumb,
           ...clearedSelection,
         })
       }
     },
 
     runMode: (mode) => {
-      // Explain / Summarize / ELI12 on the selection — sends immediately.
+      // Explain / Summarize / ELI12 on the selection; sends immediately.
       const state = get()
       if (state.typing || (!state.selectedBlockIds.length && state.selectedRegion.length !== 4)) return
       if (state.selectedRegion.length === 4) {
@@ -496,6 +546,21 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
       const { ai } = get()
       const updated = await window.margin.invoke('ai:setChoice', { ...ai, effort })
       set({ ai: updated })
+    },
+
+    refreshDetectedProviders: async () => {
+      let detectedProviders: Provider[]
+      try {
+        const executables = await window.margin.invoke('settings:getExecutables')
+        detectedProviders = PROVIDERS.filter((provider) => executables[provider].detected)
+      } catch {
+        return
+      }
+      set({ detectedProviders })
+      const { ai } = get()
+      if (detectedProviders.length && !detectedProviders.includes(ai.provider)) {
+        await get().chooseAiProvider(detectedProviders[0])
+      }
     },
   }
 })

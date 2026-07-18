@@ -14,6 +14,12 @@ function executableDescription(provider: Provider, info: CliExecutableInfo): str
   return `Using “${info.effectiveCommand}” from the system PATH.`
 }
 
+function detectionStatus(info: CliExecutableInfo): string {
+  if (info.detected) return `Detected at ${info.resolvedPath}`
+  if (info.source === 'path') return `“${info.effectiveCommand}” was not found on the system PATH.`
+  return `Executable not found at ${info.effectiveCommand}`
+}
+
 export default function Settings() {
   const [executables, setExecutables] = useState<CliExecutableSettings | null>(null)
   const [executableDrafts, setExecutableDrafts] = useState<Record<Provider, string>>(EMPTY_EXECUTABLE_DRAFTS)
@@ -192,6 +198,12 @@ export default function Settings() {
                   <span className="executable-source mono" title={info.effectiveCommand}>
                     {executableDescription(provider, info)}
                   </span>
+                  <span
+                    className={`executable-status mono${info.detected ? ' detected' : ''}`}
+                    title={info.detected ? info.resolvedPath : info.effectiveCommand}
+                  >
+                    {detectionStatus(info)}
+                  </span>
                   {executableErrors[provider] && (
                     <span className="executable-error" role="alert">{executableErrors[provider]}</span>
                   )}
@@ -222,8 +234,8 @@ export default function Settings() {
           <div className="settings-section">
             <span className="settings-section-title">Mode prompts</span>
             <span className="settings-section-copy">
-              Templates for each assistant mode. Placeholders: {'{context}'} — the selected block, page, or paper
-              text; {'{question}'} — what you typed; {'{scope}'} — where the excerpt came from.
+              Templates for each assistant mode. Placeholders: {'{context}'} is the selected block, page, or paper
+              text; {'{question}'} is what you typed; {'{scope}'} is where the excerpt came from.
             </span>
             {prompts &&
               MODES.map((mode) => (

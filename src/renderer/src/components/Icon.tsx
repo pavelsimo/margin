@@ -17,6 +17,8 @@ type IconName =
   | 'check'
   | 'link'
   | 'paperclip'
+  | 'moon'
+  | 'sun'
 
 export default function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) {
   let body
@@ -68,6 +70,12 @@ export default function Icon({ name, ...props }: { name: IconName } & SVGProps<S
       break
     case 'paperclip':
       body = <><path d="m21.4 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57a4 4 0 1 1 5.66 5.66l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" /></>
+      break
+    case 'moon':
+      body = <path d="M20.5 14.1A8.5 8.5 0 0 1 9.9 3.5 8.5 8.5 0 1 0 20.5 14.1Z" />
+      break
+    case 'sun':
+      body = <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>
       break
   }
   return (

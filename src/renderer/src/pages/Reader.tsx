@@ -34,7 +34,7 @@ function NotReadyState() {
 export default function Reader() {
   const { docId } = useParams()
   const store = useReaderStore()
-  const { assistantOpen, toggleAssistant } = useUiStore()
+  const { assistantOpen, pdfTheme, toggleAssistant, togglePdfTheme } = useUiStore()
   const handleRef = usePanelResize(CHAT_RESIZE)
 
   useEffect(() => {
@@ -52,11 +52,22 @@ export default function Reader() {
           <span className="route-eyebrow">Paper</span>
           <h1 title={store.doc?.title}>{store.doc?.title || 'Loading paper…'}</h1>
         </div>
-        <button className={`route-icon-button ${assistantOpen ? 'active' : ''}`} onClick={toggleAssistant} title="Toggle assistant" aria-label="Toggle assistant" aria-pressed={assistantOpen}>
-          <Icon name="assistant" />
-        </button>
+        <div className="reader-header-actions">
+          <button
+            className={`route-icon-button ${pdfTheme === 'dark' ? 'active' : ''}`}
+            onClick={togglePdfTheme}
+            title={pdfTheme === 'dark' ? 'Use light PDF view' : 'Use dark PDF view'}
+            aria-label={pdfTheme === 'dark' ? 'Use light PDF view' : 'Use dark PDF view'}
+            aria-pressed={pdfTheme === 'dark'}
+          >
+            <Icon name={pdfTheme === 'dark' ? 'sun' : 'moon'} />
+          </button>
+          <button className={`route-icon-button ${assistantOpen ? 'active' : ''}`} onClick={toggleAssistant} title="Toggle assistant" aria-label="Toggle assistant" aria-pressed={assistantOpen}>
+            <Icon name="assistant" />
+          </button>
+        </div>
       </header>
-      {loaded && store.doc!.scanned && <div className="scanned-notice">This PDF has little or no text layer (it may be scanned) — block selection and answers will be limited.</div>}
+      {loaded && store.doc!.scanned && <div className="scanned-notice">This PDF has little or no text layer (it may be scanned), so block selection and answers will be limited.</div>}
       {!loaded ? (
         <div className="not-ready"><span className="spinner" /></div>
       ) : store.doc!.ready ? (

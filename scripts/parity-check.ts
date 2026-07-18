@@ -20,7 +20,7 @@ console.log(`Doc ${doc.id}: "${doc.title}" (${doc.page_count} pages)`)
 
 const pdf = openPdf(readFileSync(join(root, 'data', doc.pdf_path)))
 
-const TOL = 0.01 // normalized units; ~0.6pt on a 612pt page — allow minor engine drift
+const TOL = 0.01 // normalized units; ~0.6pt on a 612pt page, allowing minor engine drift
 let pagesChecked = 0
 let matched = 0
 let missing = 0

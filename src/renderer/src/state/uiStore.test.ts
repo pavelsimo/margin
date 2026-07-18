@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { PaperRow } from '@shared/ipc'
 import { isValidAppZoomFactor } from '@shared/constants'
 import {
@@ -8,6 +8,8 @@ import {
   steppedAppZoom,
   storedAppZoom,
   storedBoolean,
+  storedPdfTheme,
+  useUiStore,
 } from './uiStore'
 
 const paper = (id: number, title: string, tags: string[]): PaperRow => ({
@@ -33,6 +35,32 @@ describe('storedBoolean', () => {
   it('parses persisted boolean strings', () => {
     expect(storedBoolean('true', false)).toBe(true)
     expect(storedBoolean('false', true)).toBe(false)
+  })
+})
+
+describe('storedPdfTheme', () => {
+  it('restores dark PDF mode', () => {
+    expect(storedPdfTheme('dark')).toBe('dark')
+  })
+
+  it('defaults missing, light, and invalid values to light PDF mode', () => {
+    expect(storedPdfTheme(null)).toBe('light')
+    expect(storedPdfTheme('light')).toBe('light')
+    expect(storedPdfTheme('invalid')).toBe('light')
+  })
+
+  it('toggles and persists the PDF theme independently', () => {
+    const setItem = vi.fn()
+    vi.stubGlobal('window', { localStorage: { setItem } })
+    useUiStore.setState({ pdfTheme: 'light' })
+
+    useUiStore.getState().togglePdfTheme()
+
+    expect(useUiStore.getState().pdfTheme).toBe('dark')
+    expect(setItem).toHaveBeenCalledWith('margin.pdfTheme', 'dark')
+
+    useUiStore.setState({ pdfTheme: 'light' })
+    vi.unstubAllGlobals()
   })
 })
 

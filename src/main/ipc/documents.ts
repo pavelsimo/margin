@@ -3,6 +3,10 @@ import type { BlockRow, DocumentRow, PageRow } from '@shared/models'
 import type { DocumentInfo, PageData } from '@shared/ipc'
 import { db, USER_ID } from '../db'
 import { pageImageUrl } from '../protocol'
+import { resolvePdf } from '../paths'
+import { renderPageRegionImage, RENDER_ZOOM } from '../services/pdf'
+
+const THUMB_TARGET_PX = 480
 
 export function getDocumentRow(docId: number): DocumentRow | undefined {
   const doc = db.prepare('SELECT * FROM document WHERE id = ?').get(docId) as DocumentRow | undefined
@@ -48,7 +52,27 @@ function getPage(docId: number, number: number): PageData {
   return { imageUrl: pageImageUrl(page.image_path), width: page.width, height: page.height, blocks }
 }
 
+// Small PNG data URL of a page region, for the chat selection preview.
+function renderRegionThumb(docId: number, pageNumber: number, bbox: [number, number, number, number]): string | null {
+  const doc = getDocumentRow(docId)
+  if (!doc) return null
+  const page = db
+    .prepare('SELECT * FROM page WHERE document_id = ? AND number = ?')
+    .get(docId, pageNumber) as PageRow | undefined
+  if (!page) return null
+  // Cap the zoom so wide regions stay around THUMB_TARGET_PX wide instead of shipping multi-MB base64.
+  const regionPts = (bbox[2] - bbox[0]) * page.width
+  const zoom = regionPts > 0 ? Math.max(0.5, Math.min(RENDER_ZOOM, THUMB_TARGET_PX / regionPts)) : RENDER_ZOOM
+  const png = renderPageRegionImage(resolvePdf(doc.pdf_path), pageNumber, bbox, zoom)
+  return png ? `data:image/png;base64,${png.toString('base64')}` : null
+}
+
 export function registerDocumentIpc(): void {
   ipcMain.handle('document:get', (_e, docId: number) => getDocument(docId))
   ipcMain.handle('page:get', (_e, req: { docId: number; number: number }) => getPage(req.docId, req.number))
+  ipcMain.handle(
+    'page:renderRegion',
+    (_e, req: { docId: number; pageNumber: number; bbox: [number, number, number, number] }) =>
+      renderRegionThumb(req.docId, req.pageNumber, req.bbox),
+  )
 }

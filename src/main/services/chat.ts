@@ -61,7 +61,7 @@ export function clearAllMessages(): number {
   return changes
 }
 
-/** (context, scope_label) — the selection wins over page text, which wins over the whole paper. */
+/** (context, scope_label): the selection wins over page text, which wins over the whole paper. */
 export function buildContext(
   document: DocumentRow,
   args: { scope: string; pageNumber: number | null; selectedText?: string },
@@ -86,7 +86,7 @@ export function imageContext(pageNumber: number | null): [string, string] {
   const where = pageNumber !== null ? ` on page ${pageNumber} of the paper` : ' in the paper'
   const context =
     `[The reader selected a figure${where}. It is attached as an image ` +
-    'rather than text — study the image to answer.]'
+    'rather than text, so study the image to answer.]'
   return [context, `a figure${where}`]
 }
 
@@ -95,7 +95,7 @@ export function regionImageContext(pageNumber: number): [string, string] {
   const where = ` on page ${pageNumber} of the paper`
   const context =
     `[The reader selected an exact visual region${where}. It is attached as an image ` +
-    'rather than extracted text — study everything visible in that region to answer.]'
+    'rather than extracted text, so study everything visible in that region to answer.]'
   return [context, `the reader's selected visual region${where}`]
 }
 

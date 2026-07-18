@@ -24,7 +24,7 @@ export function effectiveTemplate(mode: string): string {
 export function setTemplate(mode: Mode, template: string): void {
   const row = findTemplate(mode)
   if (template.trim() === (DEFAULT_PROMPTS[mode] ?? '').trim()) {
-    if (row) db.prepare('DELETE FROM prompttemplate WHERE id = ?').run(row.id) // back to stock — the record's existence means "customized"
+    if (row) db.prepare('DELETE FROM prompttemplate WHERE id = ?').run(row.id) // back to stock; the record's existence means "customized"
     return
   }
   if (!row) {

@@ -1,4 +1,4 @@
-// Pure tag parsing — no DB access. Port of tagging.parse_tags.
+// Pure tag parsing, no DB access. Port of tagging.parse_tags.
 
 export const MAX_TAGS = 5
 export const MAX_TAG_LENGTH = 40

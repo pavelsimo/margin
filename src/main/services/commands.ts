@@ -16,7 +16,7 @@ export function isCommand(text: string): boolean {
   return text.trimStart().startsWith('/')
 }
 
-/** First token minus the leading slash, lowercased — "/Clear now" -> "clear", "/" -> "". */
+/** First token minus the leading slash, lowercased: "/Clear now" -> "clear", "/" -> "". */
 export function parse(text: string): string {
   const trimmed = text.trim()
   if (!trimmed) return ''
@@ -25,7 +25,7 @@ export function parse(text: string): string {
 
 export function helpText(): string {
   return Object.entries(COMMANDS)
-    .map(([name, description]) => `- \`/${name}\` — ${description}`)
+    .map(([name, description]) => `- \`/${name}\`: ${description}`)
     .join('\n')
 }
 

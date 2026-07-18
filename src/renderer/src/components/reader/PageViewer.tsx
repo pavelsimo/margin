@@ -42,6 +42,7 @@ function SelectionToolbar() {
 
 export default function PageViewer() {
   const store = useReaderStore()
+  const pdfTheme = useUiStore((state) => state.pdfTheme)
   const viewerRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   useBlockSelection(pageRef)
@@ -60,7 +61,7 @@ export default function PageViewer() {
 
   return (
     <div ref={viewerRef} className="reader-viewer">
-      <div ref={pageRef} className="reader-pdf-page" style={{ width }} onClick={store.clearSelection}>
+      <div ref={pageRef} className={`reader-pdf-page ${pdfTheme === 'dark' ? 'pdf-dark' : ''}`} style={{ width }} onClick={store.clearSelection}>
         {store.pageImage && <img src={store.pageImage} draggable={false} alt="" />}
         {store.pageBlocks.map((b) => (
           <div

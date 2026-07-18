@@ -25,8 +25,8 @@ export function parseDbDate(value: string): Date {
   return new Date(value.replace(' ', 'T') + 'Z')
 }
 
-// The desktop app is single-user: adopt whoever owns the documents in the
-// copied DB (the web app's shared "Guest" account), falling back to any user.
+// The app is single-user: adopt whoever owns the documents in the DB,
+// falling back to any user.
 function pickUser(): number {
   const byDocs = db
     .prepare('SELECT user_id AS id FROM document GROUP BY user_id ORDER BY COUNT(*) DESC LIMIT 1')
@@ -34,7 +34,7 @@ function pickUser(): number {
   if (byDocs) return byDocs.id
   const anyUser = db.prepare('SELECT id FROM "user" ORDER BY id LIMIT 1').get() as { id: number } | undefined
   if (anyUser) return anyUser.id
-  throw new Error('no users in database — run `npm run copy-data` first')
+  throw new Error('no users in database')
 }
 
 export const USER_ID = pickUser()

@@ -3,11 +3,16 @@ import type { AppWindowState, PaperRow } from '@shared/ipc'
 import { APP_ZOOM_LEVELS, DEFAULT_APP_ZOOM } from '@shared/constants'
 
 export type ThemeMode = 'dark' | 'light'
+export type PdfTheme = 'dark' | 'light'
 
 export function storedBoolean(value: string | null, fallback: boolean): boolean {
   if (value === 'true') return true
   if (value === 'false') return false
   return fallback
+}
+
+export function storedPdfTheme(value: string | null): PdfTheme {
+  return value === 'dark' ? 'dark' : 'light'
 }
 
 export function sidebarPaperFilter(rows: PaperRow[], query: string): PaperRow[] {
@@ -59,6 +64,7 @@ interface UiStore {
   leftSidebarOpen: boolean
   assistantOpen: boolean
   theme: ThemeMode
+  pdfTheme: PdfTheme
   appZoom: number
   aboutOpen: boolean
   windowState: AppWindowState | null
@@ -66,6 +72,7 @@ interface UiStore {
   toggleAssistant: () => void
   setAssistantOpen: (open: boolean) => void
   toggleTheme: () => void
+  togglePdfTheme: () => void
   zoomIn: () => void
   zoomOut: () => void
   resetZoom: () => void
@@ -78,6 +85,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   leftSidebarOpen: storedBoolean(read('margin.leftSidebarOpen'), true),
   assistantOpen: storedBoolean(read('margin.assistantOpen'), true),
   theme: read('margin.theme') === 'light' ? 'light' : 'dark',
+  pdfTheme: storedPdfTheme(read('margin.pdfTheme')),
   appZoom: storedAppZoom(read('margin.appZoom')),
   aboutOpen: false,
   windowState: null,
@@ -100,6 +108,11 @@ export const useUiStore = create<UiStore>((set, get) => ({
     const theme = get().theme === 'dark' ? 'light' : 'dark'
     write('margin.theme', theme)
     set({ theme })
+  },
+  togglePdfTheme: () => {
+    const pdfTheme = get().pdfTheme === 'dark' ? 'light' : 'dark'
+    write('margin.pdfTheme', pdfTheme)
+    set({ pdfTheme })
   },
   zoomIn: () => {
     const appZoom = steppedAppZoom(get().appZoom, 1)

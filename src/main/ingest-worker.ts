@@ -1,7 +1,7 @@
 // Worker-thread entry for CPU-heavy PDF work. mupdf's WASM calls are synchronous;
 // running them here keeps the main process (and every IPC handler) responsive.
 // Receives { pdfPath }, posts { kind: 'meta' } then one { kind: 'page' } per page,
-// then { kind: 'done' } — or { kind: 'error' } on any failure.
+// then { kind: 'done' }, or { kind: 'error' } on any failure.
 
 import { parentPort, workerData } from 'node:worker_threads'
 import { readFileSync } from 'node:fs'

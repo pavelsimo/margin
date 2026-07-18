@@ -1,4 +1,4 @@
-// Pure prompt assembly — no DB access. Port of margin/prompts.py.
+// Pure prompt assembly, no DB access. Port of margin/prompts.py.
 
 import type { ChatMessageRow } from '@shared/models'
 import type { Mode } from '@shared/constants'
@@ -23,7 +23,7 @@ export const DEFAULT_PROMPTS: Record<Mode, string> = {
     'keeping the key claims and numbers.\n\n' +
     'Excerpt:\n{context}',
   eli12:
-    "Explain the following excerpt from {scope} like I'm 12 years old — plain words, a concrete analogy, " +
+    "Explain the following excerpt from {scope} like I'm 12 years old: plain words, a concrete analogy, " +
     "no jargon, but don't dumb down the core idea.\n\n" +
     'Excerpt:\n{context}',
 }

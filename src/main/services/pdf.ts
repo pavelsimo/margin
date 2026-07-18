@@ -78,7 +78,7 @@ function areaFraction(bbox: { w: number; h: number }, width: number, height: num
 }
 
 /** Selectable regions of a page, bboxes normalized to fractions of the page size.
- *  Unlike the web app there is no table detection — mupdf.js lacks PyMuPDF's
+ *  Unlike the web app there is no table detection, since mupdf.js lacks PyMuPDF's
  *  pure-Python find_tables, so new ingestion yields text and image blocks only. */
 export function extractBlocks(page: mupdf.PDFPage): ExtractedBlock[] {
   const [width, height] = pageSize(page)
@@ -164,9 +164,14 @@ function validNormalizedBbox(bbox: number[]): bbox is NormalizedBBox {
   return x0 >= 0 && x0 < x1 && x1 <= 1 && y0 >= 0 && y0 < y1 && y1 <= 1
 }
 
-/** Render a normalized page rectangle as PNG from the original PDF at RENDER_ZOOM.
+/** Render a normalized page rectangle as PNG from the original PDF at the given zoom.
  *  Port of ingest.render_page_region_image; returns null when unavailable. */
-export function renderPageRegionImage(pdfPath: string, pageNumber: number, bbox: number[]): Buffer | null {
+export function renderPageRegionImage(
+  pdfPath: string,
+  pageNumber: number,
+  bbox: number[],
+  zoom: number = RENDER_ZOOM,
+): Buffer | null {
   if (!validNormalizedBbox(bbox)) return null
   try {
     const pdf = openPdf(readFileSync(pdfPath))
@@ -174,13 +179,13 @@ export function renderPageRegionImage(pdfPath: string, pageNumber: number, bbox:
       const page = pdf.loadPage(pageNumber - 1) as mupdf.PDFPage
       const [width, height] = pageSize(page)
       const [x0, y0, x1, y1] = bbox
-      const matrix = mupdf.Matrix.scale(RENDER_ZOOM, RENDER_ZOOM)
+      const matrix = mupdf.Matrix.scale(zoom, zoom)
       // The pixmap's bbox (in device space) acts as the clip, like PyMuPDF's clip=.
       const clip: [number, number, number, number] = [
-        Math.floor(x0 * width * RENDER_ZOOM),
-        Math.floor(y0 * height * RENDER_ZOOM),
-        Math.ceil(x1 * width * RENDER_ZOOM),
-        Math.ceil(y1 * height * RENDER_ZOOM),
+        Math.floor(x0 * width * zoom),
+        Math.floor(y0 * height * zoom),
+        Math.ceil(x1 * width * zoom),
+        Math.ceil(y1 * height * zoom),
       ]
       if (clip[2] <= clip[0] || clip[3] <= clip[1]) return null
       const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, clip, false)

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -68,6 +69,7 @@ function AiPicker() {
 
   useEffect(() => {
     if (!open) return
+    void store.refreshDetectedProviders()
     const onDown = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
     }
@@ -76,6 +78,8 @@ function AiPicker() {
   }, [open])
 
   const { provider, model, effort } = store.ai
+  // Fail open while detection is unknown so options aren't hidden on a race.
+  const availableProviders = store.detectedProviders ?? PROVIDERS
   const label = [PROVIDER_LABELS[provider], model, effort].filter(Boolean).join(' · ')
 
   useLayoutEffect(() => {
@@ -108,10 +112,19 @@ function AiPicker() {
         {label}
         <span style={{ fontSize: 9 }}>⌄</span>
       </span>
-      {open && (
+      {open && availableProviders.length === 0 && (
         <div className="ai-picker-menu">
           <div className="menu-section">Provider</div>
-          {PROVIDERS.map((p: Provider) => (
+          <div className="menu-empty">
+            No AI CLI tools were found on this system.{' '}
+            <Link to="/settings">Open Settings</Link>
+          </div>
+        </div>
+      )}
+      {open && availableProviders.length > 0 && (
+        <div className="ai-picker-menu">
+          <div className="menu-section">Provider</div>
+          {availableProviders.map((p: Provider) => (
             <button key={p} className="menu-item" onClick={() => void store.chooseAiProvider(p)}>
               {PROVIDER_LABELS[p]}
               {provider === p && <span className="check">✓</span>}
@@ -137,6 +150,11 @@ function AiPicker() {
       )}
     </div>
   )
+}
+
+function selectionLabel(store: ReturnType<typeof useReaderStore.getState>): string {
+  if (store.selectedRegion.length === 4) return `Region · page ${store.selectedRegionPage}`
+  return `${store.selectedKind === 'table' ? 'Table' : 'Figure'} · page ${store.currentPage}`
 }
 
 function chipShort(store: ReturnType<typeof useReaderStore.getState>): string {
@@ -173,6 +191,9 @@ export default function ChatSidebar() {
   }, [store.messages.length, store.typing, streamingTextLength])
 
   const hasChip = store.chipText.trim() !== '' || store.chipBlockId !== 0 || store.chipRegion.length === 4
+  // A live figure/region selection previews above the input even before it is pinned with Ask.
+  const hasSelectionPreview =
+    store.selectedRegion.length === 4 || (store.selectedBlockIds.length > 0 && !store.selectedText.trim())
   const canSend = store.inputText.trim() !== '' && !store.typing
   const hasStreamingText = store.typing && streamingTextLength > 0
   const suggestions =
@@ -228,11 +249,19 @@ export default function ChatSidebar() {
         )}
       </div>
       <div className="chat-input-area">
-        {hasChip && (
-          <div className="chat-chip">
-            <span className="chip-text">{chipShort(store)}</span>
-            <button onClick={store.clearChip}>✕</button>
+        {hasSelectionPreview ? (
+          <div className="chat-chip chip-preview">
+            {store.selectionThumb && <img className="chip-thumb" src={store.selectionThumb} alt="Selection preview" />}
+            <span className="chip-text">{selectionLabel(store)}</span>
           </div>
+        ) : (
+          hasChip && (
+            <div className="chat-chip">
+              {store.chipThumb && <img className="chip-thumb" src={store.chipThumb} alt="Selection preview" />}
+              <span className="chip-text">{chipShort(store)}</span>
+              <button onClick={store.clearChip}>✕</button>
+            </div>
+          )
         )}
         <form
           onSubmit={(e) => {
