@@ -6,11 +6,8 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import {
   CHIP_PREVIEW_CHARS,
-  PROVIDER_EFFORTS,
   PROVIDER_LABELS,
-  PROVIDER_MODELS,
-  PROVIDERS,
-  type Provider,
+  isBuiltInProvider,
 } from '@shared/constants'
 import { ctxShort, useReaderStore, type DisplayMessage } from '../../state/readerStore'
 
@@ -69,7 +66,7 @@ function AiPicker() {
 
   useEffect(() => {
     if (!open) return
-    void store.refreshDetectedProviders()
+    void store.refreshAiProviders()
     const onDown = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
     }
@@ -78,9 +75,15 @@ function AiPicker() {
   }, [open])
 
   const { provider, model, effort } = store.ai
-  // Fail open while detection is unknown so options aren't hidden on a race.
-  const availableProviders = store.detectedProviders ?? PROVIDERS
-  const label = [PROVIDER_LABELS[provider], model, effort].filter(Boolean).join(' · ')
+  const availableProviders = store.aiProviders?.filter((candidate) => candidate.available) ?? []
+  const selectedProvider = store.aiProviders?.find((candidate) => candidate.id === provider)
+  const providerLabel = selectedProvider?.label ?? (isBuiltInProvider(provider) ? PROVIDER_LABELS[provider] : provider)
+  const configuredModels = selectedProvider?.models ?? []
+  const models = configuredModels.length
+    ? (configuredModels.includes(model) || !model ? configuredModels : [...configuredModels, model])
+    : [model].filter(Boolean)
+  const efforts = selectedProvider?.efforts ?? ['']
+  const label = [providerLabel, model, effort].filter(Boolean).join(' · ')
 
   useLayoutEffect(() => {
     const row = rootRef.current?.parentElement
@@ -124,23 +127,27 @@ function AiPicker() {
       {open && availableProviders.length > 0 && (
         <div className="ai-picker-menu">
           <div className="menu-section">Provider</div>
-          {availableProviders.map((p: Provider) => (
-            <button key={p} className="menu-item" onClick={() => void store.chooseAiProvider(p)}>
-              {PROVIDER_LABELS[p]}
-              {provider === p && <span className="check">✓</span>}
+          {availableProviders.map((candidate) => (
+            <button key={candidate.id} className="menu-item" onClick={() => void store.chooseAiProvider(candidate.id)}>
+              {candidate.label}
+              {provider === candidate.id && <span className="check">✓</span>}
             </button>
           ))}
-          <div className="menu-separator" />
-          <div className="menu-section">Effort</div>
-          {PROVIDER_EFFORTS[provider].map((option) => (
-            <button key={option || 'default'} className="menu-item" onClick={() => void store.chooseAiEffort(option)}>
-              {option === '' ? 'Default' : option}
-              {effort === option && <span className="check">✓</span>}
-            </button>
-          ))}
+          {selectedProvider?.kind !== 'openai-compatible' && (
+            <>
+              <div className="menu-separator" />
+              <div className="menu-section">Effort</div>
+              {efforts.map((option) => (
+                <button key={option || 'default'} className="menu-item" onClick={() => void store.chooseAiEffort(option)}>
+                  {option === '' ? 'Default' : option}
+                  {effort === option && <span className="check">✓</span>}
+                </button>
+              ))}
+            </>
+          )}
           <div className="menu-separator" />
           <div className="menu-section">Model</div>
-          {PROVIDER_MODELS[provider].map((option) => (
+          {models.map((option) => (
             <button key={option || 'default'} className="menu-item" onClick={() => void store.chooseAiModel(option)}>
               {option === '' ? 'Default' : option}
               {model === option && <span className="check">✓</span>}

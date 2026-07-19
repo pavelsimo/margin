@@ -2,15 +2,22 @@
 // stream-JSON print mode; Codex uses the app-server JSONL protocol;
 // Antigravity (agy) prints the plain-text answer from its --print mode.
 
+import { net } from 'electron'
 import { spawn } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
-import { PROVIDER_LABELS, type Provider } from '@shared/constants'
+import {
+  PROVIDER_LABELS,
+  isOpenAiCompatibleProvider,
+  type AiProviderId,
+  type Provider,
+} from '@shared/constants'
 import type { CliExecutableInfo } from '@shared/ipc'
 import { buildCommand, cliEnvironment, parseClaudeStreamLine, parseCodexStreamLine } from './aiCore'
-import { executableInfo } from './executableSettings'
+import { executableInfo, openAiApiKey, openAiProfile } from './executableSettings'
+import { runOpenAiChat, type FetchLike } from './openAiCompatibleCore'
 
 export { buildCommand, parseClaudeStreamLine, parseCodexStreamLine } from './aiCore'
 
@@ -38,8 +45,36 @@ export interface RunOpts {
   onDelta?: (text: string) => void
 }
 
-export async function runPrompt(provider: Provider, prompt: string, opts: RunOpts = {}): Promise<AIResult> {
-  const label = PROVIDER_LABELS[provider] ?? provider
+export async function runPrompt(provider: AiProviderId, prompt: string, opts: RunOpts = {}): Promise<AIResult> {
+  if (isOpenAiCompatibleProvider(provider)) {
+    const profile = openAiProfile(provider)
+    if (!profile) return { ok: false, text: '', error: 'That OpenAI-compatible API profile no longer exists.' }
+    const model = opts.model?.trim() || profile.defaultModel
+    if (!model) return { ok: false, text: '', error: `${profile.name} needs a model before it can answer.` }
+    let apiKey: string
+    try {
+      apiKey = await openAiApiKey(provider)
+    } catch {
+      return {
+        ok: false,
+        text: '',
+        error: `${profile.name}'s saved API key could not be unlocked. Open Settings and save it again.`,
+      }
+    }
+    return runOpenAiChat(
+      { name: profile.name, baseUrl: profile.baseUrl, apiKey },
+      prompt,
+      {
+        model,
+        imagePng: opts.imagePng,
+        timeout: opts.timeout ?? AI_TIMEOUT,
+        signal: opts.signal,
+        onDelta: opts.onDelta,
+      },
+      net.fetch as FetchLike,
+    )
+  }
+  const label = PROVIDER_LABELS[provider]
   const executable = executableInfo(provider)
   const timeout = opts.timeout ?? AI_TIMEOUT
   const workdir = await mkdtemp(join(tmpdir(), 'margin-ai-'))

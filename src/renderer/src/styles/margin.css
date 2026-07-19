@@ -1287,6 +1287,86 @@ body.reader-region-selecting {
   font-size: 12.5px;
 }
 
+.settings-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-section-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.api-profile-card,
+.api-profile-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--m-border);
+  border-radius: 10px;
+  background: var(--m-surface);
+}
+
+.api-profile-card .card-head,
+.api-profile-editor .card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.api-profile-model,
+.api-profile-meta,
+.settings-field-help,
+.settings-empty {
+  color: var(--m-muted);
+  font-size: 10.5px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--m-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.settings-field .text-input {
+  width: 100%;
+  background: var(--m-bg);
+  font-size: 12px;
+}
+
+.field-optional {
+  color: var(--m-faint);
+  font-weight: 400;
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--m-muted);
+  font-size: 11.5px;
+}
+
+.credential-warning {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #d99b34 45%, var(--m-border));
+  border-radius: 8px;
+  color: color-mix(in srgb, #d99b34 72%, var(--m-ink));
+  background: color-mix(in srgb, #d99b34 7%, var(--m-surface));
+  font-size: 11.5px;
+}
+
+.danger-link {
+  color: var(--red-9, #c33);
+}
+
 .danger-card {
   display: flex;
   flex-direction: column;

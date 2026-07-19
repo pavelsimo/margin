@@ -190,4 +190,5 @@ export function registerChatIpc(): void {
   })
   ipcMain.handle('ai:getChoice', () => chat.aiChoice())
   ipcMain.handle('ai:setChoice', (_e, choice: AiChoice) => chat.setAiChoice(choice))
+  ipcMain.handle('ai:getProviders', () => chat.aiProviders())
 }

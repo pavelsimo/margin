@@ -3,6 +3,19 @@
 export const PROVIDERS = ['claude', 'codex', 'antigravity'] as const
 export type Provider = (typeof PROVIDERS)[number]
 
+export const OPENAI_COMPATIBLE_PROVIDER_PREFIX = 'openai-compatible:' as const
+export type OpenAiCompatibleProviderId = `${typeof OPENAI_COMPATIBLE_PROVIDER_PREFIX}${string}`
+export type AiProviderId = Provider | OpenAiCompatibleProviderId
+
+export function isBuiltInProvider(value: string): value is Provider {
+  return PROVIDERS.includes(value as Provider)
+}
+
+export function isOpenAiCompatibleProvider(value: string): value is OpenAiCompatibleProviderId {
+  return value.startsWith(OPENAI_COMPATIBLE_PROVIDER_PREFIX)
+    && value.length > OPENAI_COMPATIBLE_PROVIDER_PREFIX.length
+}
+
 export const PROVIDER_LABELS: Record<Provider, string> = {
   claude: 'Claude',
   codex: 'Codex',

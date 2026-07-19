@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { rmSync } from 'node:fs'
-import { detectExecutable, ExecutableSettingsStore, isExecutableFile, resolveCommandOnPath } from './executableSettingsCore'
+import {
+  detectExecutable,
+  ExecutableSettingsStore,
+  isExecutableFile,
+  normalizeOpenAiBaseUrl,
+  resolveCommandOnPath,
+  type CredentialCodec,
+} from './executableSettingsCore'
 
 const temporaryDirectories: string[] = []
 
@@ -209,5 +216,125 @@ describe('ExecutableSettingsStore', () => {
 
     expect(() => settings.set('claude', nonExecutable)).toThrow('not executable')
     expect(settings.get('claude').effectiveCommand).toBe(savedPath)
+  })
+})
+
+describe('OpenAI-compatible profile settings', () => {
+  const codec: CredentialCodec = {
+    encrypt: async (value) => Buffer.from(`protected:${value}`, 'utf8').toString('base64'),
+    decrypt: async (value) => Buffer.from(value, 'base64').toString('utf8').replace(/^protected:/, ''),
+    protection: () => 'os',
+  }
+
+  function profileStore(settingsPath: string): ExecutableSettingsStore {
+    let nextId = 0
+    return new ExecutableSettingsStore(
+      settingsPath,
+      {},
+      'linux',
+      undefined,
+      () => '',
+      codec,
+      () => `profile-${++nextId}`,
+    )
+  }
+
+  it('normalizes standard and gateway base URLs', () => {
+    expect(normalizeOpenAiBaseUrl('http://localhost:11434')).toBe('http://localhost:11434/v1')
+    expect(normalizeOpenAiBaseUrl('https://example.com/gateway/v1/')).toBe('https://example.com/gateway/v1')
+    expect(() => normalizeOpenAiBaseUrl('ftp://example.com')).toThrow('HTTP or HTTPS')
+    expect(() => normalizeOpenAiBaseUrl('https://user:pass@example.com/v1')).toThrow('API key field')
+    expect(() => normalizeOpenAiBaseUrl('https://example.com/v1?token=x')).toThrow('query or fragment')
+  })
+
+  it('preserves legacy executable settings while adding, updating, and deleting profiles', async () => {
+    const directory = tempDirectory()
+    const settingsPath = join(directory, 'settings.json')
+    const claudePath = executable(directory, 'claude-custom')
+    writeFileSync(settingsPath, JSON.stringify({ cliExecutables: { claude: claudePath } }))
+    const settings = profileStore(settingsPath)
+
+    const first = await settings.upsertOpenAiProfile({
+      name: 'Ollama',
+      baseUrl: 'http://localhost:11434',
+      defaultModel: 'llama3.2',
+      models: ['qwen3', 'llama3.2', 'qwen3'],
+    })
+    const second = await settings.upsertOpenAiProfile({
+      name: 'Lab gateway',
+      baseUrl: 'https://models.example.test/openai/v1',
+      defaultModel: 'research-model',
+    })
+
+    expect(first.id).toBe('openai-compatible:profile-1')
+    expect(first.models).toEqual(['llama3.2', 'qwen3'])
+    expect(settings.get('claude').effectiveCommand).toBe(claudePath)
+    expect(settings.openAiProfiles()).toHaveLength(2)
+    const codexPath = executable(directory, 'codex-custom')
+    settings.set('codex', codexPath)
+    expect(settings.openAiProfiles()).toHaveLength(2)
+    settings.deleteOpenAiProfile(first.id)
+    expect(settings.openAiProfiles().map((profile) => profile.id)).toEqual([second.id])
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8')).cliExecutables).toEqual({
+      claude: claudePath,
+      codex: codexPath,
+    })
+  })
+
+  it('encrypts keys, redacts public metadata, preserves blank edits, and supports explicit removal', async () => {
+    const settingsPath = join(tempDirectory(), 'settings.json')
+    const settings = profileStore(settingsPath)
+    const created = await settings.upsertOpenAiProfile({
+      name: 'Remote',
+      baseUrl: 'https://api.example.test/v1',
+      defaultModel: 'model-a',
+      apiKey: 'super-secret-value',
+    })
+
+    expect(created).toMatchObject({ hasApiKey: true, credentialProtection: 'os' })
+    expect(created).not.toHaveProperty('apiKey')
+    expect(readFileSync(settingsPath, 'utf8')).not.toContain('super-secret-value')
+    expect(await settings.openAiApiKey(created.id)).toBe('super-secret-value')
+
+    const preserved = await settings.upsertOpenAiProfile({
+      id: created.id,
+      name: 'Remote renamed',
+      baseUrl: created.baseUrl,
+      defaultModel: created.defaultModel,
+      apiKey: '',
+    })
+    expect(preserved.hasApiKey).toBe(true)
+    expect(await settings.openAiApiKey(created.id)).toBe('super-secret-value')
+
+    const cleared = await settings.upsertOpenAiProfile({
+      id: created.id,
+      name: preserved.name,
+      baseUrl: preserved.baseUrl,
+      defaultModel: preserved.defaultModel,
+      clearApiKey: true,
+    })
+    expect(cleared.hasApiKey).toBe(false)
+    expect(await settings.openAiApiKey(created.id)).toBe('')
+  })
+
+  it('rejects duplicate names and invalid profile fields without replacing saved profiles', async () => {
+    const settings = profileStore(join(tempDirectory(), 'settings.json'))
+    await settings.upsertOpenAiProfile({
+      name: 'Ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      defaultModel: 'llama3.2',
+    })
+
+    await expect(settings.upsertOpenAiProfile({
+      name: 'ollama',
+      baseUrl: 'http://localhost:22434/v1',
+      defaultModel: 'qwen3',
+    })).rejects.toThrow('unique')
+    await expect(settings.upsertOpenAiProfile({
+      name: 'Missing model',
+      baseUrl: 'http://localhost:11434/v1',
+      defaultModel: ' ',
+    })).rejects.toThrow('default model')
+    expect(settings.openAiProfiles()).toHaveLength(1)
   })
 })

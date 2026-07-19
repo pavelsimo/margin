@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BlockRow } from '@shared/models'
-import type { ChatDelta, ChatSendResult, CliExecutableSettings } from '@shared/ipc'
-import type { Provider } from '@shared/constants'
+import type { AiProviderInfo, ChatDelta, ChatSendResult } from '@shared/ipc'
 import { useReaderStore } from './readerStore'
 
 describe('reader chat history invalidation', () => {
@@ -260,17 +259,27 @@ describe('selection thumbnail preview', () => {
   })
 })
 
-describe('detected CLI providers', () => {
-  function executableSettings(detected: Provider[]): CliExecutableSettings {
-    return Object.fromEntries(
-      (['claude', 'codex', 'antigravity'] as const).map((provider) => [provider, {
-        customPath: '',
-        effectiveCommand: provider,
-        source: 'path',
-        detected: detected.includes(provider),
-        resolvedPath: detected.includes(provider) ? `/usr/bin/${provider}` : '',
-      }]),
-    ) as CliExecutableSettings
+describe('AI provider registry', () => {
+  function providers(available: string[], includeOllama = false): AiProviderInfo[] {
+    const result: AiProviderInfo[] = (['claude', 'codex', 'antigravity'] as const).map((provider) => ({
+      id: provider,
+      label: provider,
+      kind: 'cli',
+      models: [''],
+      defaultModel: '',
+      efforts: [''],
+      available: available.includes(provider),
+    }))
+    if (includeOllama) result.push({
+      id: 'openai-compatible:test',
+      label: 'Ollama',
+      kind: 'openai-compatible',
+      models: ['llama3.2'],
+      defaultModel: 'llama3.2',
+      efforts: [''],
+      available: true,
+    })
+    return result
   }
 
   afterEach(() => {
@@ -278,49 +287,71 @@ describe('detected CLI providers', () => {
   })
 
   it('keeps only detected providers and leaves a detected selection alone', async () => {
-    const invoke = vi.fn().mockResolvedValue(executableSettings(['claude', 'codex']))
+    const registry = providers(['claude', 'codex'])
+    const invoke = vi.fn().mockResolvedValue(registry)
     vi.stubGlobal('window', { margin: { invoke } })
-    useReaderStore.setState({ ai: { provider: 'claude', model: '', effort: '' }, detectedProviders: null })
+    useReaderStore.setState({ ai: { provider: 'claude', model: '', effort: '' }, aiProviders: null })
 
-    await useReaderStore.getState().refreshDetectedProviders()
+    await useReaderStore.getState().refreshAiProviders()
 
-    expect(useReaderStore.getState().detectedProviders).toEqual(['claude', 'codex'])
+    expect(useReaderStore.getState().aiProviders).toEqual(registry)
     expect(invoke).not.toHaveBeenCalledWith('ai:setChoice', expect.anything())
   })
 
   it('auto-switches to the first detected provider when the selection is missing', async () => {
     const invoke = vi.fn().mockImplementation((channel: string) => {
-      if (channel === 'settings:getExecutables') return Promise.resolve(executableSettings(['codex']))
+      if (channel === 'ai:getProviders') return Promise.resolve(providers(['codex']))
       return Promise.resolve({ provider: 'codex', model: '', effort: '' })
     })
     vi.stubGlobal('window', { margin: { invoke } })
-    useReaderStore.setState({ ai: { provider: 'claude', model: '', effort: '' }, detectedProviders: null })
+    useReaderStore.setState({ ai: { provider: 'claude', model: '', effort: '' }, aiProviders: null })
 
-    await useReaderStore.getState().refreshDetectedProviders()
+    await useReaderStore.getState().refreshAiProviders()
 
     expect(invoke).toHaveBeenCalledWith('ai:setChoice', { provider: 'codex', model: '', effort: '' })
     expect(useReaderStore.getState().ai.provider).toBe('codex')
   })
 
   it('does not switch away when no provider is detected', async () => {
-    const invoke = vi.fn().mockResolvedValue(executableSettings([]))
+    const registry = providers([])
+    const invoke = vi.fn().mockResolvedValue(registry)
     vi.stubGlobal('window', { margin: { invoke } })
-    useReaderStore.setState({ ai: { provider: 'claude', model: '', effort: '' }, detectedProviders: null })
+    useReaderStore.setState({ ai: { provider: 'claude', model: '', effort: '' }, aiProviders: null })
 
-    await useReaderStore.getState().refreshDetectedProviders()
+    await useReaderStore.getState().refreshAiProviders()
 
-    expect(useReaderStore.getState().detectedProviders).toEqual([])
+    expect(useReaderStore.getState().aiProviders).toEqual(registry)
     expect(invoke).not.toHaveBeenCalledWith('ai:setChoice', expect.anything())
     expect(useReaderStore.getState().ai.provider).toBe('claude')
+  })
+
+  it('selects a configured compatible API with its default model', async () => {
+    const registry = providers([], true)
+    const invoke = vi.fn().mockImplementation((channel: string, choice?: unknown) => {
+      if (channel === 'ai:getProviders') return Promise.resolve(registry)
+      return Promise.resolve(choice)
+    })
+    vi.stubGlobal('window', { margin: { invoke } })
+    useReaderStore.setState({ ai: { provider: 'claude', model: '', effort: '' }, aiProviders: null })
+
+    await useReaderStore.getState().refreshAiProviders()
+
+    expect(invoke).toHaveBeenCalledWith('ai:setChoice', {
+      provider: 'openai-compatible:test',
+      model: 'llama3.2',
+      effort: '',
+    })
+    expect(useReaderStore.getState().ai.model).toBe('llama3.2')
   })
 
   it('leaves prior detection state intact when the lookup fails', async () => {
     const invoke = vi.fn().mockRejectedValue(new Error('ipc failure'))
     vi.stubGlobal('window', { margin: { invoke } })
-    useReaderStore.setState({ ai: { provider: 'claude', model: '', effort: '' }, detectedProviders: ['claude'] })
+    const registry = providers(['claude'])
+    useReaderStore.setState({ ai: { provider: 'claude', model: '', effort: '' }, aiProviders: registry })
 
-    await useReaderStore.getState().refreshDetectedProviders()
+    await useReaderStore.getState().refreshAiProviders()
 
-    expect(useReaderStore.getState().detectedProviders).toEqual(['claude'])
+    expect(useReaderStore.getState().aiProviders).toEqual(registry)
   })
 })

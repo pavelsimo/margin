@@ -8,9 +8,12 @@
   <a href="https://deepwiki.com/pavelsimo/margin"><img src="https://img.shields.io/badge/DeepWiki-0088cc?style=flat-square&amp;logoColor=white" alt="DeepWiki"></a>
 </p>
 
-margin is a desktop app for reading research papers. Add PDFs or arXiv links to a searchable
-library, open a paper, select the text or figure you want to understand, and ask questions with your favorite coding agent (e.g. Codex, Claude Code). It uses the AI command-line tools installed on your computer,
-so you do not need a separate paid API.
+**margin** is a desktop PDF reader with AI built in. Designed with research papers in mind, but it handles any PDF you throw at it.
+
+- **Fast, searchable library.** Drop in PDFs or arXiv links and find anything instantly.
+- **Ask questions in context.** Highlight text, equations, tables, or figures and chat about them right there in the paper.
+- **Bring your own AI.** Works with any OpenAI-compatible API, or with your favorite coding agent like Codex, Claude Code, and Antigravity. You pick the model and provider. No lock-in.
+- **Local-first and private.** Your chats, PDFs, and app data stay on your machine. No tracking, no subscription, no account to create. Remote AI providers only receive the content needed for your request, per their privacy policy.
 
 ![Home screen showing a searchable grid of papers with first-page previews](docs/screenshots/home.png)
 *Library: first-page previews of your papers; add them from a link or file, then search by title or topic.*

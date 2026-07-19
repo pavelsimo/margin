@@ -1,10 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { MODE_LABELS, MODES, PROVIDER_ENV_VARS, PROVIDER_LABELS, PROVIDERS, type Mode, type Provider } from '@shared/constants'
-import type { CliExecutableInfo, CliExecutableSettings, PromptInfo } from '@shared/ipc'
+import type {
+  CliExecutableInfo,
+  CliExecutableSettings,
+  OpenAiCompatibleProfile,
+  OpenAiCompatibleProfileDraft,
+  PromptInfo,
+} from '@shared/ipc'
 import { cleanIpcError } from '../state/libraryStore'
 import { useReaderStore } from '../state/readerStore'
 
 const EMPTY_EXECUTABLE_DRAFTS: Record<Provider, string> = { claude: '', codex: '', antigravity: '' }
+const EMPTY_API_DRAFT: OpenAiCompatibleProfileDraft = {
+  name: '',
+  baseUrl: 'http://localhost:11434/v1',
+  defaultModel: '',
+  apiKey: '',
+  models: [],
+}
 
 function executableDescription(provider: Provider, info: CliExecutableInfo): string {
   if (info.source === 'custom') return `Using custom executable: ${info.effectiveCommand}`
@@ -26,6 +39,12 @@ export default function Settings() {
   const [executableErrors, setExecutableErrors] = useState<Partial<Record<Provider, string>>>({})
   const [savedExecutable, setSavedExecutable] = useState<Provider | ''>('')
   const [busyExecutable, setBusyExecutable] = useState<Provider | ''>('')
+  const [apiProfiles, setApiProfiles] = useState<OpenAiCompatibleProfile[] | null>(null)
+  const [apiDraft, setApiDraft] = useState<OpenAiCompatibleProfileDraft | null>(null)
+  const [apiBusy, setApiBusy] = useState(false)
+  const [apiError, setApiError] = useState('')
+  const [apiStatus, setApiStatus] = useState('')
+  const [deleteApiProfile, setDeleteApiProfile] = useState<OpenAiCompatibleProfile | null>(null)
   const [prompts, setPrompts] = useState<Record<Mode, PromptInfo> | null>(null)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [savedMode, setSavedMode] = useState('')
@@ -46,7 +65,97 @@ export default function Settings() {
       setPrompts(result)
       setDrafts(Object.fromEntries(MODES.map((mode) => [mode, result[mode].template])))
     })
+    void window.margin.invoke('settings:getOpenAiProviders').then(setApiProfiles)
   }, [])
+
+  const beginAddApi = () => {
+    setApiDraft({ ...EMPTY_API_DRAFT, models: [] })
+    setApiError('')
+    setApiStatus('')
+  }
+
+  const beginEditApi = (profile: OpenAiCompatibleProfile) => {
+    setApiDraft({
+      id: profile.id,
+      name: profile.name,
+      baseUrl: profile.baseUrl,
+      defaultModel: profile.defaultModel,
+      models: [...profile.models],
+      apiKey: '',
+    })
+    setApiError('')
+    setApiStatus('')
+  }
+
+  const testApiConnection = async () => {
+    if (!apiDraft) return
+    setApiBusy(true)
+    setApiError('')
+    setApiStatus('')
+    try {
+      const result = await window.margin.invoke('settings:testOpenAiProvider', apiDraft)
+      const defaultModel = apiDraft.defaultModel || result.models[0] || ''
+      setApiDraft((draft) => draft ? { ...draft, defaultModel, models: result.models } : draft)
+      setApiStatus(`Connected · ${result.models.length} ${result.models.length === 1 ? 'model' : 'models'} found`)
+    } catch (error) {
+      setApiError(cleanIpcError(error))
+    } finally {
+      setApiBusy(false)
+    }
+  }
+
+  const saveApiProfile = async () => {
+    if (!apiDraft) return
+    setApiBusy(true)
+    setApiError('')
+    setApiStatus('')
+    try {
+      const saved = await window.margin.invoke('settings:upsertOpenAiProvider', apiDraft)
+      setApiProfiles((profiles) => {
+        const next = [...(profiles ?? [])]
+        const index = next.findIndex((profile) => profile.id === saved.id)
+        if (index === -1) next.push(saved)
+        else next[index] = saved
+        return next
+      })
+      setApiDraft(null)
+    } catch (error) {
+      setApiError(cleanIpcError(error))
+    } finally {
+      setApiBusy(false)
+    }
+  }
+
+  const refreshApiModels = async (profile: OpenAiCompatibleProfile) => {
+    setApiBusy(true)
+    setApiError('')
+    setApiStatus('')
+    try {
+      const refreshed = await window.margin.invoke('settings:refreshOpenAiModels', profile.id)
+      setApiProfiles((profiles) => profiles?.map((item) => item.id === refreshed.id ? refreshed : item) ?? null)
+      setApiStatus(`${profile.name}: refreshed ${refreshed.models.length} ${refreshed.models.length === 1 ? 'model' : 'models'}`)
+    } catch (error) {
+      setApiError(cleanIpcError(error))
+    } finally {
+      setApiBusy(false)
+    }
+  }
+
+  const confirmDeleteApiProfile = async () => {
+    if (!deleteApiProfile) return
+    setApiBusy(true)
+    setApiError('')
+    try {
+      await window.margin.invoke('settings:deleteOpenAiProvider', deleteApiProfile.id)
+      setApiProfiles((profiles) => profiles?.filter((profile) => profile.id !== deleteApiProfile.id) ?? null)
+      setApiDraft((draft) => draft?.id === deleteApiProfile.id ? null : draft)
+      setDeleteApiProfile(null)
+    } catch (error) {
+      setApiError(cleanIpcError(error))
+    } finally {
+      setApiBusy(false)
+    }
+  }
 
   const saveExecutablePath = async (provider: Provider) => {
     setBusyExecutable(provider)
@@ -151,6 +260,11 @@ export default function Settings() {
     }
   }
 
+  const editingApiProfile = apiDraft?.id
+    ? apiProfiles?.find((profile) => profile.id === apiDraft.id)
+    : undefined
+  const weakCredentialStorage = apiProfiles?.some((profile) => profile.credentialProtection === 'basic')
+
   return (
     <section className="route-page">
       <header className="route-header">
@@ -158,6 +272,137 @@ export default function Settings() {
       </header>
       <div className="route-scroll settings-scroll">
         <div className="settings-content">
+          <div className="settings-section">
+            <div className="settings-section-heading">
+              <div>
+                <span className="settings-section-title">OpenAI-compatible APIs</span>
+                <span className="settings-section-copy">
+                  Add Ollama or another compatible endpoint. Profiles are available to chats and automatic paper tagging.
+                </span>
+              </div>
+              {!apiDraft && (
+                <button className="btn" type="button" onClick={beginAddApi}>Add API</button>
+              )}
+            </div>
+            {weakCredentialStorage && (
+              <span className="credential-warning" role="status">
+                Your Linux session does not provide an OS secret store. Saved API keys receive only basic local protection.
+              </span>
+            )}
+            {apiProfiles?.map((profile) => (
+              <div className="api-profile-card" key={profile.id}>
+                <div className="card-head">
+                  <span className="executable-label">{profile.name}</span>
+                  <span className="api-profile-model mono">{profile.defaultModel}</span>
+                  <span style={{ flex: 1 }} />
+                  <button className="btn-ghost" type="button" disabled={apiBusy} onClick={() => beginEditApi(profile)}>
+                    Edit
+                  </button>
+                </div>
+                <span className="executable-source mono" title={profile.baseUrl}>{profile.baseUrl}</span>
+                <span className="api-profile-meta mono">
+                  {profile.models.length} cached {profile.models.length === 1 ? 'model' : 'models'} · {profile.hasApiKey ? 'API key saved' : 'No API key'}
+                </span>
+                <div className="executable-actions">
+                  <button className="btn btn-soft" type="button" disabled={apiBusy} onClick={() => void refreshApiModels(profile)}>
+                    Refresh models
+                  </button>
+                  <button className="btn-ghost danger-link" type="button" disabled={apiBusy} onClick={() => setDeleteApiProfile(profile)}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+            {apiProfiles?.length === 0 && !apiDraft && (
+              <span className="settings-empty">No API profiles yet. For local Ollama, use http://localhost:11434/v1.</span>
+            )}
+            {apiDraft && (
+              <div className="api-profile-editor">
+                <div className="card-head">
+                  <span className="executable-label">{apiDraft.id ? 'Edit API profile' : 'Add API profile'}</span>
+                </div>
+                <label className="settings-field">
+                  <span>Name</span>
+                  <input
+                    className="text-input"
+                    value={apiDraft.name}
+                    placeholder="Ollama"
+                    maxLength={64}
+                    onChange={(event) => setApiDraft({ ...apiDraft, name: event.target.value })}
+                  />
+                </label>
+                <label className="settings-field">
+                  <span>Base URL</span>
+                  <input
+                    className="text-input mono"
+                    value={apiDraft.baseUrl}
+                    placeholder="http://localhost:11434/v1"
+                    spellCheck={false}
+                    onChange={(event) => setApiDraft({ ...apiDraft, baseUrl: event.target.value })}
+                  />
+                </label>
+                <label className="settings-field">
+                  <span>API key <span className="field-optional">optional</span></span>
+                  <input
+                    className="text-input mono"
+                    type="password"
+                    autoComplete="off"
+                    value={apiDraft.apiKey ?? ''}
+                    disabled={apiDraft.clearApiKey}
+                    placeholder={editingApiProfile?.hasApiKey ? 'Leave blank to keep the saved key' : 'Not required by local Ollama'}
+                    onChange={(event) => setApiDraft({ ...apiDraft, apiKey: event.target.value, clearApiKey: false })}
+                  />
+                </label>
+                {editingApiProfile?.hasApiKey && (
+                  <label className="settings-check">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(apiDraft.clearApiKey)}
+                      onChange={(event) => setApiDraft({ ...apiDraft, clearApiKey: event.target.checked, apiKey: '' })}
+                    />
+                    Remove saved API key
+                  </label>
+                )}
+                <label className="settings-field">
+                  <span>Default model</span>
+                  <input
+                    className="text-input mono"
+                    value={apiDraft.defaultModel}
+                    list="openai-compatible-models"
+                    placeholder="llama3.2"
+                    spellCheck={false}
+                    onChange={(event) => setApiDraft({ ...apiDraft, defaultModel: event.target.value })}
+                  />
+                  <datalist id="openai-compatible-models">
+                    {(apiDraft.models ?? []).map((model) => <option value={model} key={model} />)}
+                  </datalist>
+                </label>
+                <span className="settings-field-help">
+                  Test the connection to load models, or enter one manually to save an offline endpoint.
+                </span>
+                {apiError && <span className="executable-error" role="alert">{apiError}</span>}
+                {apiStatus && <span className="settings-success" role="status">{apiStatus}</span>}
+                <div className="executable-actions">
+                  <button className="btn btn-soft" type="button" disabled={apiBusy || !apiDraft.baseUrl.trim()} onClick={() => void testApiConnection()}>
+                    {apiBusy ? 'Working…' : 'Test connection'}
+                  </button>
+                  <button
+                    className="btn"
+                    type="button"
+                    disabled={apiBusy || !apiDraft.name.trim() || !apiDraft.baseUrl.trim() || !apiDraft.defaultModel.trim()}
+                    onClick={() => void saveApiProfile()}
+                  >
+                    Save
+                  </button>
+                  <button className="btn-ghost" type="button" disabled={apiBusy} onClick={() => setApiDraft(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {!apiDraft && apiError && <span className="executable-error" role="alert">{apiError}</span>}
+            {!apiDraft && apiStatus && <span className="settings-success" role="status">{apiStatus}</span>}
+          </div>
           <div className="settings-section">
             <span className="settings-section-title">AI command-line tools</span>
             <span className="settings-section-copy">
@@ -302,6 +547,31 @@ export default function Settings() {
           </div>
         </div>
       </div>
+      {deleteApiProfile && (
+        <div className="dialog-overlay" onClick={() => !apiBusy && setDeleteApiProfile(null)}>
+          <div
+            className="dialog dialog-small"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-api-title"
+            aria-describedby="delete-api-description"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="delete-api-title">Delete {deleteApiProfile.name}?</h2>
+            <p className="dialog-copy" id="delete-api-description">
+              This removes the endpoint, cached model list, and saved API key. Your chat history is unchanged.
+            </p>
+            <div className="dialog-actions">
+              <button className="btn btn-soft" type="button" disabled={apiBusy} onClick={() => setDeleteApiProfile(null)}>
+                Cancel
+              </button>
+              <button className="btn btn-danger" type="button" disabled={apiBusy} onClick={() => void confirmDeleteApiProfile()}>
+                {apiBusy ? 'Deleting…' : 'Delete API'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {deleteDialogOpen && (
         <div className="dialog-overlay" onClick={closeDeleteDialog}>
           <div

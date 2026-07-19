@@ -1,16 +1,15 @@
 import { create } from 'zustand'
 import type { BlockRow } from '@shared/models'
-import type { AiChoice, ChatDelta, ChatSendRequest, ChatSendResult, DocumentInfo, UiMessage } from '@shared/ipc'
+import type { AiChoice, AiProviderInfo, ChatDelta, ChatSendRequest, ChatSendResult, DocumentInfo, UiMessage } from '@shared/ipc'
 import {
   CHIP_PREVIEW_CHARS,
   IMAGE_MODE_QUESTIONS,
   MODE_LABELS,
   MODE_QUESTIONS,
-  PROVIDERS,
   REGION_MODE_QUESTIONS,
   ZOOM_LEVELS,
+  type AiProviderId,
   type Mode,
-  type Provider,
 } from '@shared/constants'
 import {
   clickSelection,
@@ -95,7 +94,7 @@ interface ReaderStore {
   scope: 'page' | 'document'
   zoom: number
   ai: AiChoice
-  detectedProviders: Provider[] | null
+  aiProviders: AiProviderInfo[] | null
 
   loadReader: (docId: number) => Promise<void>
   loadPage: (number: number) => Promise<void>
@@ -116,10 +115,10 @@ interface ReaderStore {
   sendSuggestion: (text: string) => void
   stop: () => void
   clearAllChatHistory: () => void
-  chooseAiProvider: (provider: Provider) => Promise<void>
+  chooseAiProvider: (provider: AiProviderId) => Promise<void>
   chooseAiModel: (model: string) => Promise<void>
   chooseAiEffort: (effort: string) => Promise<void>
-  refreshDetectedProviders: () => Promise<void>
+  refreshAiProviders: () => Promise<void>
 }
 
 const clearedSelection = {
@@ -328,15 +327,16 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
     scope: 'page',
     zoom: 100,
     ai: { provider: 'claude', model: '', effort: '' },
-    detectedProviders: null,
+    aiProviders: null,
 
     loadReader: async (docId) => {
       const activeRequestId = get().activeRequestId
       if (activeRequestId) await window.margin.invoke('chat:stop', activeRequestId).catch(() => false)
       const doc = await window.margin.invoke('document:get', docId)
-      const [history, ai] = await Promise.all([
+      const [history, ai, aiProviders] = await Promise.all([
         window.margin.invoke('chat:history', docId),
         window.margin.invoke('ai:getChoice'),
+        window.margin.invoke('ai:getProviders'),
       ])
       set({
         documentId: docId,
@@ -344,6 +344,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
         currentPage: 1,
         messages: history.map(displayRow),
         ai,
+        aiProviders,
         inputText: '',
         ...clearedChip,
         ...clearedSelection,
@@ -352,7 +353,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
         activeRequestId: '',
         zoom: 100,
       })
-      void get().refreshDetectedProviders()
+      void get().refreshAiProviders()
       await get().loadPage(1)
     },
 
@@ -531,8 +532,12 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
     },
 
     chooseAiProvider: async (provider) => {
-      // provider switch resets model/effort
-      const ai = await window.margin.invoke('ai:setChoice', { provider, model: '', effort: '' })
+      const info = get().aiProviders?.find((candidate) => candidate.id === provider)
+      const ai = await window.margin.invoke('ai:setChoice', {
+        provider,
+        model: info?.defaultModel ?? '',
+        effort: '',
+      })
       set({ ai })
     },
 
@@ -548,18 +553,18 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
       set({ ai: updated })
     },
 
-    refreshDetectedProviders: async () => {
-      let detectedProviders: Provider[]
+    refreshAiProviders: async () => {
+      let aiProviders: AiProviderInfo[]
       try {
-        const executables = await window.margin.invoke('settings:getExecutables')
-        detectedProviders = PROVIDERS.filter((provider) => executables[provider].detected)
+        aiProviders = await window.margin.invoke('ai:getProviders')
       } catch {
         return
       }
-      set({ detectedProviders })
+      set({ aiProviders })
+      const available = aiProviders.filter((provider) => provider.available)
       const { ai } = get()
-      if (detectedProviders.length && !detectedProviders.includes(ai.provider)) {
-        await get().chooseAiProvider(detectedProviders[0])
+      if (available.length && !available.some((provider) => provider.id === ai.provider)) {
+        await get().chooseAiProvider(available[0].id)
       }
     },
   }

@@ -1,7 +1,7 @@
 // IPC contract between main and renderer. Channel names and payload shapes.
 
 import type { BlockRow } from './models'
-import type { Mode, Provider } from './constants'
+import type { AiProviderId, Mode, OpenAiCompatibleProviderId, Provider } from './constants'
 
 export interface PaperRow {
   id: number
@@ -68,9 +68,45 @@ export type ChatSendResult =
   | { status: 'stopped'; message?: UiMessage }
 
 export interface AiChoice {
-  provider: Provider
+  provider: AiProviderId
   model: string
   effort: string
+}
+
+export interface AiProviderInfo {
+  id: AiProviderId
+  label: string
+  kind: 'cli' | 'openai-compatible'
+  models: string[]
+  defaultModel: string
+  efforts: string[]
+  available: boolean
+}
+
+export type CredentialProtection = 'os' | 'basic'
+
+export interface OpenAiCompatibleProfile {
+  id: OpenAiCompatibleProviderId
+  name: string
+  baseUrl: string
+  defaultModel: string
+  models: string[]
+  hasApiKey: boolean
+  credentialProtection: CredentialProtection
+}
+
+export interface OpenAiCompatibleProfileDraft {
+  id?: OpenAiCompatibleProviderId
+  name: string
+  baseUrl: string
+  defaultModel: string
+  models?: string[]
+  apiKey?: string
+  clearApiKey?: boolean
+}
+
+export interface OpenAiConnectionResult {
+  models: string[]
 }
 
 export interface PromptInfo {
@@ -144,6 +180,7 @@ export interface IpcApi {
   'chat:clearAll': () => number
   'ai:getChoice': () => AiChoice
   'ai:setChoice': (choice: AiChoice) => AiChoice
+  'ai:getProviders': () => AiProviderInfo[]
   'prompts:get': () => Record<Mode, PromptInfo>
   'prompts:set': (req: { mode: Mode; template: string }) => PromptInfo
   'prompts:reset': (mode: Mode) => PromptInfo
@@ -151,6 +188,11 @@ export interface IpcApi {
   'settings:setExecutable': (req: { provider: Provider; path: string }) => CliExecutableInfo
   'settings:resetExecutable': (provider: Provider) => CliExecutableInfo
   'settings:chooseExecutable': (provider: Provider) => string | null
+  'settings:getOpenAiProviders': () => OpenAiCompatibleProfile[]
+  'settings:upsertOpenAiProvider': (draft: OpenAiCompatibleProfileDraft) => OpenAiCompatibleProfile
+  'settings:deleteOpenAiProvider': (id: OpenAiCompatibleProviderId) => AiChoice
+  'settings:testOpenAiProvider': (draft: OpenAiCompatibleProfileDraft) => OpenAiConnectionResult
+  'settings:refreshOpenAiModels': (id: OpenAiCompatibleProviderId) => OpenAiCompatibleProfile
   'ingest:fromUrl': (url: string) => { docId: number }
   'ingest:fromFile': (req: { name: string; data: ArrayBuffer }) => { docId: number }
 }
