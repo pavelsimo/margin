@@ -1,6 +1,6 @@
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { rmSync } from 'node:fs'
 import { detectExecutable, ExecutableSettingsStore, isExecutableFile, resolveCommandOnPath } from './executableSettingsCore'
@@ -25,20 +25,20 @@ afterEach(() => {
 })
 
 function store(settingsPath: string, env: NodeJS.ProcessEnv = {}, searchPath = ''): ExecutableSettingsStore {
-  return new ExecutableSettingsStore(settingsPath, env, 'linux', undefined, () => searchPath)
+  return new ExecutableSettingsStore(settingsPath, env, process.platform, undefined, () => searchPath)
 }
 
 describe('isExecutableFile', () => {
-  it('accepts executable files and rejects missing files, directories, and non-executables', () => {
+  it('accepts files, rejects missing paths and directories, and honors host executable semantics', () => {
     const directory = tempDirectory()
     const nonExecutable = join(directory, 'plain')
     writeFileSync(nonExecutable, 'plain text')
     chmodSync(nonExecutable, 0o644)
 
-    expect(isExecutableFile(executable(directory, 'claude'), 'linux')).toBe(true)
-    expect(isExecutableFile(join(directory, 'missing'), 'linux')).toBe(false)
-    expect(isExecutableFile(directory, 'linux')).toBe(false)
-    expect(isExecutableFile(nonExecutable, 'linux')).toBe(false)
+    expect(isExecutableFile(executable(directory, 'claude'), process.platform)).toBe(true)
+    expect(isExecutableFile(join(directory, 'missing'), process.platform)).toBe(false)
+    expect(isExecutableFile(directory, process.platform)).toBe(false)
+    expect(isExecutableFile(nonExecutable, process.platform)).toBe(process.platform === 'win32')
   })
 
   it('skips the executable-bit check on Windows', () => {
@@ -58,16 +58,14 @@ describe('resolveCommandOnPath', () => {
     const firstPath = executable(first, 'claude')
     executable(second, 'claude')
 
-    const searchPath = [join(first, 'missing'), first, second].join(':')
-    expect(resolveCommandOnPath('claude', searchPath, (path) => isExecutableFile(path, 'linux'))).toBe(firstPath)
+    const searchPath = [join(first, 'missing'), first, second].join(delimiter)
+    expect(resolveCommandOnPath('claude', searchPath, (path) => path === firstPath)).toBe(firstPath)
   })
 
-  it('skips non-executable matches and returns empty when nothing is found', () => {
+  it('skips candidates rejected by the executable check and returns empty when nothing is found', () => {
     const directory = tempDirectory()
-    const nonExecutable = join(directory, 'claude')
-    writeFileSync(nonExecutable, 'plain text')
-    chmodSync(nonExecutable, 0o644)
-    const isExecutable = (path: string) => isExecutableFile(path, 'linux')
+    writeFileSync(join(directory, 'claude'), 'plain text')
+    const isExecutable = () => false
 
     expect(resolveCommandOnPath('claude', directory, isExecutable)).toBe('')
     expect(resolveCommandOnPath('claude', '', isExecutable)).toBe('')
@@ -75,7 +73,7 @@ describe('resolveCommandOnPath', () => {
 })
 
 describe('detectExecutable', () => {
-  const isExecutable = (path: string) => isExecutableFile(path, 'linux')
+  const isExecutable = (path: string) => isExecutableFile(path, process.platform)
 
   it('checks absolute commands directly, ignoring the search path', () => {
     const directory = tempDirectory()
@@ -188,7 +186,19 @@ describe('ExecutableSettingsStore', () => {
     expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).toEqual({ cliExecutables: { claude: claudePath } })
   })
 
-  it('rejects relative, missing, directory, and non-executable paths without replacing the saved value', () => {
+  it('rejects relative, missing, and directory paths without replacing the saved value', () => {
+    const directory = tempDirectory()
+    const settings = store(join(directory, 'settings.json'))
+    const savedPath = executable(directory, 'claude-custom')
+    settings.set('claude', savedPath)
+
+    expect(() => settings.set('claude', 'relative/claude')).toThrow('absolute path')
+    expect(() => settings.set('claude', join(directory, 'missing'))).toThrow('does not exist')
+    expect(() => settings.set('claude', directory)).toThrow('not a file')
+    expect(settings.get('claude').effectiveCommand).toBe(savedPath)
+  })
+
+  it.skipIf(process.platform === 'win32')('rejects non-executable Unix files without replacing the saved value', () => {
     const directory = tempDirectory()
     const settings = store(join(directory, 'settings.json'))
     const savedPath = executable(directory, 'claude-custom')
@@ -197,9 +207,6 @@ describe('ExecutableSettingsStore', () => {
     writeFileSync(nonExecutable, 'plain text')
     chmodSync(nonExecutable, 0o644)
 
-    expect(() => settings.set('claude', 'relative/claude')).toThrow('absolute path')
-    expect(() => settings.set('claude', join(directory, 'missing'))).toThrow('does not exist')
-    expect(() => settings.set('claude', directory)).toThrow('not a file')
     expect(() => settings.set('claude', nonExecutable)).toThrow('not executable')
     expect(settings.get('claude').effectiveCommand).toBe(savedPath)
   })

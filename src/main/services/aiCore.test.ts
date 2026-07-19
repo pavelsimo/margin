@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { delimiter, join } from 'node:path'
 import { buildCommand, cliEnvironment, parseClaudeStreamLine, parseCodexStreamLine } from './aiCore'
 
 const originalClaudeBin = process.env.CLAUDE_BIN
@@ -67,13 +68,15 @@ describe('buildCommand', () => {
 })
 
 describe('cliEnvironment', () => {
-  it('adds system tools and user shims to a minimal desktop PATH', () => {
-    const env = cliEnvironment({ PATH: '/home/test/.local/bin' }, '/home/test', 'linux')
-    const paths = env.PATH!.split(':')
+  it.skipIf(process.platform === 'win32')('adds system tools and user shims to a minimal desktop PATH', () => {
+    const home = join('/', 'home', 'test')
+    const localBin = join(home, '.local', 'bin')
+    const env = cliEnvironment({ PATH: localBin }, home, process.platform)
+    const paths = env.PATH!.split(delimiter)
 
-    expect(env.HOME).toBe('/home/test')
-    expect(paths).toContain('/home/test/.local/bin')
-    expect(paths).toContain('/home/test/.local/share/mise/shims')
+    expect(env.HOME).toBe(home)
+    expect(paths).toContain(localBin)
+    expect(paths).toContain(join(home, '.local', 'share', 'mise', 'shims'))
     expect(paths).toContain('/usr/bin')
     expect(paths).toContain('/bin')
     expect(new Set(paths).size).toBe(paths.length)
