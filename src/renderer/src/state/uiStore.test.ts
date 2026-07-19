@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { PaperRow } from '@shared/ipc'
+import type { ChatThreadSummary, PaperRow } from '@shared/ipc'
 import { isValidAppZoomFactor } from '@shared/constants'
 import {
   appZoomShortcut,
@@ -10,6 +10,7 @@ import {
   storedBoolean,
   storedPdfTheme,
   useUiStore,
+  visibleSidebarThreads,
 } from './uiStore'
 
 const paper = (id: number, title: string, tags: string[]): PaperRow => ({
@@ -124,11 +125,33 @@ describe('sidebarPaperFilter', () => {
 describe('isReaderRoute', () => {
   it('recognizes valid paper reader paths', () => {
     expect(isReaderRoute('/read/37')).toBe(true)
+    expect(isReaderRoute('/read/37/new')).toBe(true)
+    expect(isReaderRoute('/read/37/chat/91')).toBe(true)
   })
 
   it('rejects non-reader and malformed paths', () => {
     expect(isReaderRoute('/')).toBe(false)
     expect(isReaderRoute('/settings')).toBe(false)
     expect(isReaderRoute('/read/not-a-number')).toBe(false)
+    expect(isReaderRoute('/read/37/chat/not-a-number')).toBe(false)
+  })
+})
+
+describe('visibleSidebarThreads', () => {
+  const rows: ChatThreadSummary[] = Array.from({ length: 6 }, (_, index) => ({
+    id: index + 1,
+    documentId: 1,
+    title: `Chat ${index + 1}`,
+    createdAt: `2026-01-0${index + 1}`,
+    updatedAt: `2026-01-0${index + 1}`,
+  }))
+
+  it('shows exactly five chats until expanded', () => {
+    expect(visibleSidebarThreads(rows, false).map((row) => row.id)).toEqual([1, 2, 3, 4, 5])
+    expect(visibleSidebarThreads(rows, true)).toEqual(rows)
+  })
+
+  it('keeps a deep-linked active chat visible', () => {
+    expect(visibleSidebarThreads(rows, false, 6)).toEqual(rows)
   })
 })

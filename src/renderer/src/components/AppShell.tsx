@@ -7,6 +7,7 @@ import PrimarySidebar from './PrimarySidebar'
 import TitleBar from './TitleBar'
 import { usePanelResize } from '../hooks/usePanelResize'
 import { useLibraryStore } from '../state/libraryStore'
+import { useReaderStore } from '../state/readerStore'
 import { appZoomShortcut, isReaderRoute, useUiStore } from '../state/uiStore'
 
 const SIDEBAR_RESIZE = {
@@ -31,7 +32,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void library.refresh()
-    return window.margin.onIngestUpdate(() => void library.refresh())
+    const unsubscribeIngest = window.margin.onIngestUpdate(() => void library.refresh())
+    const unsubscribeThreads = window.margin.onChatThreadUpdate((update) => {
+      useLibraryStore.getState().upsertChatThread(update.thread)
+      useReaderStore.getState().applyThreadUpdate(update)
+    })
+    return () => {
+      unsubscribeIngest()
+      unsubscribeThreads()
+    }
     // Store actions are stable for the lifetime of the app.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

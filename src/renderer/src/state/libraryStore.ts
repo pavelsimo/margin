@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { PaperRow } from '@shared/ipc'
+import type { ChatThreadSummary, PaperRow } from '@shared/ipc'
 
 // Case-insensitive paper search across titles and generated topic tags.
 export function filterPaperRows(rows: PaperRow[], query: string): PaperRow[] {
@@ -13,6 +13,7 @@ export function filterPaperRows(rows: PaperRow[], query: string): PaperRow[] {
 
 interface LibraryStore {
   allPapers: PaperRow[]
+  chatThreads: ChatThreadSummary[]
   loaded: boolean
   query: string
   linkUrl: string
@@ -21,6 +22,8 @@ interface LibraryStore {
   addFocusRequest: number
   confirmDeleteId: number
   refresh: () => Promise<void>
+  upsertChatThread: (thread: ChatThreadSummary) => void
+  clearChatThreads: () => void
   setQuery: (query: string) => void
   setLinkUrl: (url: string) => void
   requestAddFocus: () => void
@@ -34,6 +37,7 @@ interface LibraryStore {
 
 export const useLibraryStore = create<LibraryStore>((set, get) => ({
   allPapers: [],
+  chatThreads: [],
   loaded: false,
   query: '',
   linkUrl: '',
@@ -43,9 +47,20 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   confirmDeleteId: 0,
 
   refresh: async () => {
-    const allPapers = await window.margin.invoke('library:list')
-    set({ allPapers, loaded: true })
+    const [allPapers, chatThreads] = await Promise.all([
+      window.margin.invoke('library:list'),
+      window.margin.invoke('chat:list'),
+    ])
+    set({ allPapers, chatThreads, loaded: true })
   },
+
+  upsertChatThread: (thread) => set((state) => {
+    const chatThreads = state.chatThreads.filter((candidate) => candidate.id !== thread.id)
+    chatThreads.push(thread)
+    chatThreads.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id - a.id)
+    return { chatThreads }
+  }),
+  clearChatThreads: () => set({ chatThreads: [] }),
 
   setQuery: (query) => set({ query }),
   setLinkUrl: (linkUrl) => set({ linkUrl, addError: '' }),

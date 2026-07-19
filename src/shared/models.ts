@@ -37,6 +37,7 @@ export interface BlockRow {
 
 export interface ChatMessageRow {
   id: number
+  thread_id: number
   document_id: number
   user_id: number
   role: 'user' | 'assistant'
@@ -46,4 +47,13 @@ export interface ChatMessageRow {
   scope: 'page' | 'document'
   page_number: number | null
   created_at: string
+}
+
+export interface ChatThreadRow {
+  id: number
+  document_id: number
+  user_id: number
+  title: string
+  created_at: string
+  updated_at: string
 }

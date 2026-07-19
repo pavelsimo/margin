@@ -11,6 +11,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Library />} />
           <Route path="/read/:docId" element={<Reader />} />
+          <Route path="/read/:docId/new" element={<Reader />} />
+          <Route path="/read/:docId/chat/:threadId" element={<Reader />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </AppShell>

@@ -337,4 +337,50 @@ describe('OpenAI-compatible profile settings', () => {
     })).rejects.toThrow('default model')
     expect(settings.openAiProfiles()).toHaveLength(1)
   })
+
+  it('round-trips the background choice through persistence and clears it on request', () => {
+    const settingsPath = join(tempDirectory(), 'settings.json')
+    const settings = profileStore(settingsPath)
+    expect(settings.backgroundChoice()).toBeNull()
+
+    settings.setBackgroundChoice({ provider: 'claude', model: 'fable', effort: 'low' })
+    expect(settings.backgroundChoice()).toEqual({ provider: 'claude', model: 'fable', effort: 'low' })
+    expect(profileStore(settingsPath).backgroundChoice()).toEqual({ provider: 'claude', model: 'fable', effort: 'low' })
+
+    settings.setBackgroundChoice(null)
+    expect(settings.backgroundChoice()).toBeNull()
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).not.toHaveProperty('backgroundAiChoice')
+  })
+
+  it('drops a malformed background choice on load', () => {
+    const settingsPath = join(tempDirectory(), 'settings.json')
+    writeFileSync(settingsPath, JSON.stringify({ backgroundAiChoice: { provider: 'not-a-provider', model: '', effort: '' } }))
+    expect(profileStore(settingsPath).backgroundChoice()).toBeNull()
+
+    writeFileSync(settingsPath, JSON.stringify({ backgroundAiChoice: { provider: 'claude', model: 42, effort: '' } }))
+    expect(profileStore(settingsPath).backgroundChoice()).toBeNull()
+  })
+
+  it('clears the background choice when its profile is deleted but not otherwise', async () => {
+    const settingsPath = join(tempDirectory(), 'settings.json')
+    const settings = profileStore(settingsPath)
+    const first = await settings.upsertOpenAiProfile({
+      name: 'Ollama',
+      baseUrl: 'http://localhost:11434',
+      defaultModel: 'llama3.2',
+    })
+    const second = await settings.upsertOpenAiProfile({
+      name: 'Gateway',
+      baseUrl: 'https://models.example.test/v1',
+      defaultModel: 'research-model',
+    })
+
+    settings.setBackgroundChoice({ provider: first.id, model: 'llama3.2', effort: '' })
+    settings.deleteOpenAiProfile(second.id)
+    expect(settings.backgroundChoice()).toEqual({ provider: first.id, model: 'llama3.2', effort: '' })
+
+    settings.deleteOpenAiProfile(first.id)
+    expect(settings.backgroundChoice()).toBeNull()
+    expect(JSON.parse(readFileSync(settingsPath, 'utf8'))).not.toHaveProperty('backgroundAiChoice')
+  })
 })

@@ -3,7 +3,7 @@
 import type { DocumentRow } from '@shared/models'
 import { db, USER_ID } from '../db'
 import * as ai from './ai'
-import { aiChoice } from './chat'
+import { backgroundAiChoice } from './chat'
 
 import { parseTags } from './taggingCore'
 
@@ -73,7 +73,7 @@ export async function generateDocumentTags(docId: number): Promise<TaggingResult
 
   const vocabulary = existingVocabulary()
   const prompt = buildPrompt(document)
-  const choice = aiChoice()
+  const choice = backgroundAiChoice()
   const response = await ai.runPrompt(choice.provider, prompt, { model: choice.model, effort: choice.effort })
   if (!response.ok) return { ok: false, tags: [], error: response.error, providerFailed: true }
   let tags: string[]

@@ -1,7 +1,57 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BlockRow } from '@shared/models'
-import type { AiProviderInfo, ChatDelta, ChatSendResult } from '@shared/ipc'
+import type { AiProviderInfo, ChatDelta, ChatSendResult, ChatThreadSummary, DocumentInfo } from '@shared/ipc'
+import { ZOOM_LEVELS } from '@shared/constants'
 import { useReaderStore } from './readerStore'
+
+const readyDocument: DocumentInfo = {
+  id: 42,
+  title: 'Test paper',
+  authors: '',
+  pageCount: 5,
+  ready: true,
+  failed: false,
+  failMessage: '',
+  scanned: false,
+}
+
+const thread: ChatThreadSummary = {
+  id: 99,
+  documentId: 42,
+  title: 'Test chat',
+  createdAt: '2026-01-01 00:00:00.000000',
+  updatedAt: '2026-01-01 00:00:00.000000',
+}
+
+describe('reader navigation and zoom boundaries', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('does not move before the first or after the last page', () => {
+    const invoke = vi.fn()
+    vi.stubGlobal('window', { margin: { invoke } })
+    useReaderStore.setState({ doc: readyDocument, currentPage: 1 })
+
+    useReaderStore.getState().prevPage()
+    expect(useReaderStore.getState().currentPage).toBe(1)
+
+    useReaderStore.setState({ currentPage: readyDocument.pageCount })
+    useReaderStore.getState().nextPage()
+    expect(useReaderStore.getState().currentPage).toBe(readyDocument.pageCount)
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('does not zoom outside the supported PDF zoom levels', () => {
+    useReaderStore.setState({ zoom: ZOOM_LEVELS[0] })
+    useReaderStore.getState().zoomOut()
+    expect(useReaderStore.getState().zoom).toBe(ZOOM_LEVELS[0])
+
+    useReaderStore.setState({ zoom: ZOOM_LEVELS[ZOOM_LEVELS.length - 1] })
+    useReaderStore.getState().zoomIn()
+    expect(useReaderStore.getState().zoom).toBe(ZOOM_LEVELS[ZOOM_LEVELS.length - 1])
+  })
+})
 
 describe('reader chat history invalidation', () => {
   afterEach(() => {
@@ -33,6 +83,7 @@ describe('reader chat history invalidation', () => {
     useReaderStore.getState().clearAllChatHistory()
     resolveReply({
       status: 'completed',
+      thread,
       message: {
         id: 10,
         role: 'assistant',
@@ -85,6 +136,7 @@ describe('reader chat history invalidation', () => {
 
     resolveReply({
       status: 'completed',
+      thread: { ...thread, documentId: 7 },
       message: { id: 3, role: 'assistant', content: 'hello world', contextText: '', mode: 'ask', isError: false },
     })
     await Promise.resolve()
@@ -115,7 +167,7 @@ describe('reader chat history invalidation', () => {
     })
 
     useReaderStore.getState().send()
-    resolveReply({ status: 'stopped' })
+    resolveReply({ status: 'stopped', thread: { ...thread, documentId: 8 } })
     await Promise.resolve()
     await Promise.resolve()
 
@@ -132,6 +184,81 @@ describe('reader chat history invalidation', () => {
     useReaderStore.getState().stop()
 
     expect(invoke).toHaveBeenCalledWith('chat:stop', 'request-123')
+  })
+
+  it('clears the active thread synchronously before opening a new chat', () => {
+    const invoke = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal('window', { margin: { invoke } })
+    useReaderStore.setState({
+      documentId: 42,
+      doc: readyDocument,
+      activeThreadId: thread.id,
+      activeThread: thread,
+      activeRequestId: 'request-456',
+      typing: true,
+      messages: [{ key: 1, role: 'user', content: 'Old chat', ctx: '', isError: false }],
+      inputText: 'Old draft',
+    })
+
+    useReaderStore.getState().startNewChat(42)
+
+    expect(invoke).toHaveBeenCalledWith('chat:stop', 'request-456')
+    expect(useReaderStore.getState().activeThreadId).toBe(0)
+    expect(useReaderStore.getState().activeThread).toBeNull()
+    expect(useReaderStore.getState().messages).toEqual([])
+    expect(useReaderStore.getState().inputText).toBe('')
+    expect(useReaderStore.getState().typing).toBe(false)
+  })
+
+  it('activates a lazily created thread only for the matching request', () => {
+    useReaderStore.setState({ documentId: 42, activeThreadId: 0, activeThread: null, activeRequestId: 'request-1' })
+
+    useReaderStore.getState().applyThreadUpdate({
+      thread,
+      reason: 'created',
+      requestId: 'other-request',
+    })
+    expect(useReaderStore.getState().activeThreadId).toBe(0)
+
+    useReaderStore.getState().applyThreadUpdate({ thread, reason: 'created', requestId: 'request-1' })
+    expect(useReaderStore.getState().activeThreadId).toBe(thread.id)
+
+    const titled = { ...thread, title: 'Generated title' }
+    useReaderStore.getState().applyThreadUpdate({ thread: titled, reason: 'titled' })
+    expect(useReaderStore.getState().activeThread?.title).toBe('Generated title')
+  })
+})
+
+describe('reader thread loading', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('ignores an older paper load that resolves after a newer one', async () => {
+    let resolveFirst!: (doc: DocumentInfo) => void
+    let resolveSecond!: (doc: DocumentInfo) => void
+    const first = new Promise<DocumentInfo>((resolve) => { resolveFirst = resolve })
+    const second = new Promise<DocumentInfo>((resolve) => { resolveSecond = resolve })
+    const invoke = vi.fn((channel: string, arg?: unknown) => {
+      if (channel === 'document:get') return arg === 1 ? first : second
+      if (channel === 'chat:list') return Promise.resolve([])
+      if (channel === 'ai:getChoice') return Promise.resolve({ provider: 'claude', model: '', effort: '' })
+      if (channel === 'ai:getProviders') return Promise.resolve([])
+      if (channel === 'page:get') return Promise.resolve({ imageUrl: '', width: 0, height: 0, blocks: [] })
+      return Promise.resolve(undefined)
+    })
+    vi.stubGlobal('window', { margin: { invoke } })
+    useReaderStore.setState({ activeRequestId: '', documentId: 0, doc: null })
+
+    const firstLoad = useReaderStore.getState().loadReader(1, null)
+    const secondLoad = useReaderStore.getState().loadReader(2, null)
+    resolveSecond({ ...readyDocument, id: 2, title: 'Second paper' })
+    await secondLoad
+    resolveFirst({ ...readyDocument, id: 1, title: 'First paper' })
+    await firstLoad
+
+    expect(useReaderStore.getState().documentId).toBe(2)
+    expect(useReaderStore.getState().doc?.title).toBe('Second paper')
   })
 })
 

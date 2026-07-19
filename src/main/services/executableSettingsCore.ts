@@ -6,11 +6,13 @@ import {
   PROVIDER_COMMANDS,
   PROVIDER_ENV_VARS,
   PROVIDERS,
+  isBuiltInProvider,
   isOpenAiCompatibleProvider,
   type OpenAiCompatibleProviderId,
   type Provider,
 } from '@shared/constants'
 import type {
+  AiChoice,
   CliExecutableInfo,
   CliExecutableSettings,
   CredentialProtection,
@@ -32,6 +34,8 @@ interface StoredOpenAiCompatibleProfile {
 interface StoredSettings {
   cliExecutables?: Partial<Record<Provider, string>>
   openAiCompatibleProviders?: StoredOpenAiCompatibleProfile[]
+  // Provider/model used for background generation (chat titles, paper topics). Absent = follow the chat selection.
+  backgroundAiChoice?: AiChoice
 }
 
 export interface CredentialCodec {
@@ -94,6 +98,19 @@ function parseSettings(raw: string): StoredSettings {
       }
     }
     if (profiles.length) settings.openAiCompatibleProviders = profiles
+  }
+
+  const choiceCandidate = source.backgroundAiChoice
+  if (choiceCandidate && typeof choiceCandidate === 'object' && !Array.isArray(choiceCandidate)) {
+    const choice = choiceCandidate as Record<string, unknown>
+    if (
+      typeof choice.provider === 'string'
+      && (isBuiltInProvider(choice.provider) || isOpenAiCompatibleProvider(choice.provider))
+      && typeof choice.model === 'string'
+      && typeof choice.effort === 'string'
+    ) {
+      settings.backgroundAiChoice = { provider: choice.provider, model: choice.model, effort: choice.effort }
+    }
   }
   return settings
 }
@@ -258,8 +275,22 @@ export class ExecutableSettingsStore {
     const profiles = this.settings.openAiCompatibleProviders ?? []
     const next = profiles.filter((profile) => profile.id !== id)
     if (next.length === profiles.length) return false
-    this.replace({ ...this.settings, openAiCompatibleProviders: next })
+    const settings = { ...this.settings, openAiCompatibleProviders: next }
+    if (settings.backgroundAiChoice?.provider === id) delete settings.backgroundAiChoice
+    this.replace(settings)
     return true
+  }
+
+  backgroundChoice(): AiChoice | null {
+    const choice = this.settings.backgroundAiChoice
+    return choice ? { ...choice } : null
+  }
+
+  setBackgroundChoice(choice: AiChoice | null): void {
+    const settings = { ...this.settings }
+    if (choice) settings.backgroundAiChoice = { ...choice }
+    else delete settings.backgroundAiChoice
+    this.replace(settings)
   }
 
   updateOpenAiModels(id: OpenAiCompatibleProviderId, models: string[]): OpenAiCompatibleProfile {
@@ -330,6 +361,7 @@ export class ExecutableSettingsStore {
     const serialized = {
       ...(Object.keys(cliExecutables).length ? { cliExecutables } : {}),
       ...(profiles.length ? { openAiCompatibleProviders: profiles } : {}),
+      ...(settings.backgroundAiChoice ? { backgroundAiChoice: settings.backgroundAiChoice } : {}),
     }
     const contents = JSON.stringify(serialized, null, 2) + '\n'
     const directory = dirname(this.filePath)

@@ -78,6 +78,7 @@ export function deleteDocument(docId: number): void {
     db.prepare('DELETE FROM block WHERE page_id IN (SELECT id FROM page WHERE document_id = ?)').run(docId)
     db.prepare('DELETE FROM page WHERE document_id = ?').run(docId)
     db.prepare('DELETE FROM chatmessage WHERE document_id = ?').run(docId)
+    db.prepare('DELETE FROM chatthread WHERE document_id = ?').run(docId)
     db.prepare('DELETE FROM documentopen WHERE document_id = ?').run(docId)
     db.prepare('DELETE FROM ingestionerror WHERE document_id = ?').run(docId)
     db.prepare('DELETE FROM document WHERE id = ?').run(docId)

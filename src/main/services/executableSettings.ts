@@ -1,7 +1,7 @@
 import { app, safeStorage } from 'electron'
 import { join } from 'node:path'
 import type { OpenAiCompatibleProviderId, Provider } from '@shared/constants'
-import type { OpenAiCompatibleProfileDraft } from '@shared/ipc'
+import type { AiChoice, OpenAiCompatibleProfileDraft } from '@shared/ipc'
 import { ExecutableSettingsStore, type CredentialCodec } from './executableSettingsCore'
 
 let runtimeStore: ExecutableSettingsStore | undefined
@@ -68,4 +68,12 @@ export function deleteOpenAiProfile(id: OpenAiCompatibleProviderId) {
 
 export function updateOpenAiModels(id: OpenAiCompatibleProviderId, models: string[]) {
   return store().updateOpenAiModels(id, models)
+}
+
+export function backgroundChoice() {
+  return store().backgroundChoice()
+}
+
+export function setBackgroundChoice(choice: AiChoice | null) {
+  store().setBackgroundChoice(choice)
 }

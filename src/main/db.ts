@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import { DB_PATH } from './paths'
+import { migrateChatThreads } from './services/chatMigration'
 
 export const db = new Database(DB_PATH)
 
@@ -8,6 +9,7 @@ db.pragma('journal_mode = WAL')
 db.pragma('synchronous = NORMAL')
 db.pragma('busy_timeout = 5000')
 db.pragma('foreign_keys = ON')
+migrateChatThreads(db)
 
 /** Naive-UTC timestamp in SQLAlchemy's format: "YYYY-MM-DD HH:MM:SS.ffffff". */
 export function utcnowSql(): string {

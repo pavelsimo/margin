@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from 'electron'
-import type { AppWindowState, ChatDelta, IngestUpdate, MarginApi } from '@shared/ipc'
+import type { AppWindowState, ChatDelta, ChatThreadUpdate, IngestUpdate, MarginApi } from '@shared/ipc'
 import { isValidAppZoomFactor } from '@shared/constants'
 
 const api: MarginApi = {
@@ -18,6 +18,11 @@ const api: MarginApi = {
     const wrapped = (_event: unknown, delta: ChatDelta) => listener(delta)
     ipcRenderer.on('chat:delta', wrapped)
     return () => ipcRenderer.removeListener('chat:delta', wrapped)
+  },
+  onChatThreadUpdate: (listener: (update: ChatThreadUpdate) => void) => {
+    const wrapped = (_event: unknown, update: ChatThreadUpdate) => listener(update)
+    ipcRenderer.on('chat:thread-update', wrapped)
+    return () => ipcRenderer.removeListener('chat:thread-update', wrapped)
   },
   setZoomFactor: (factor: number) => {
     if (!isValidAppZoomFactor(factor)) {

@@ -6,6 +6,6 @@ export default defineConfig({
     alias: { '@shared': resolve(import.meta.dirname, 'src/shared') },
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 })

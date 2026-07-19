@@ -1,6 +1,14 @@
 import { ipcMain, type WebContents } from 'electron'
 import type { ChatMessageRow, PageRow } from '@shared/models'
-import type { AiChoice, ChatDelta, ChatSendRequest, ChatSendResult, UiMessage } from '@shared/ipc'
+import type {
+  AiChoice,
+  ChatDelta,
+  ChatSendRequest,
+  ChatSendResult,
+  ChatThreadSummary,
+  ChatThreadUpdate,
+  UiMessage,
+} from '@shared/ipc'
 import { db } from '../db'
 import { resolvePdf } from '../paths'
 import { getDocumentRow } from './documents'
@@ -8,7 +16,15 @@ import * as ai from '../services/ai'
 import * as chat from '../services/chat'
 import * as commands from '../services/commands'
 import * as prompts from '../services/prompts'
+import { backgroundChoice } from '../services/executableSettings'
 import { renderPageRegionImage } from '../services/pdf'
+import { fallbackChatTitle, sanitizeGeneratedTitle } from '../services/chatCore'
+
+const CHAT_TITLE_TIMEOUT_SECONDS = 20
+const CHAT_TITLE_PROMPT = (question: string) =>
+  'Write a concise 3-7 word title for a research-paper chat whose first user question is below. ' +
+  'Return only the title as plain text: no quotes, markdown, label, or punctuation at the end.\n\n' +
+  question
 
 function uiMessage(m: ChatMessageRow): UiMessage {
   return {
@@ -26,6 +42,25 @@ function uiMessage(m: ChatMessageRow): UiMessage {
 interface SendChatOptions {
   signal?: AbortSignal
   onDelta?: (text: string) => void
+  onThreadUpdate?: (update: ChatThreadUpdate) => void
+}
+
+async function titleNewThread(
+  threadId: number,
+  question: string,
+  historyGeneration: number,
+  onThreadUpdate?: (update: ChatThreadUpdate) => void,
+): Promise<void> {
+  const choice = chat.backgroundAiChoice()
+  const result = await ai.runPrompt(choice.provider, CHAT_TITLE_PROMPT(question), {
+    model: choice.model,
+    effort: choice.effort,
+    timeout: CHAT_TITLE_TIMEOUT_SECONDS,
+  })
+  if (chat.currentHistoryGeneration() !== historyGeneration) return
+  const generated = result.ok ? sanitizeGeneratedTitle(result.text) : ''
+  const row = chat.updateThreadTitle(threadId, generated || fallbackChatTitle(question))
+  if (row) onThreadUpdate?.({ thread: chat.threadSummary(row), reason: 'titled' })
 }
 
 export async function sendChat(req: ChatSendRequest, opts: SendChatOptions = {}): Promise<ChatSendResult> {
@@ -40,15 +75,24 @@ export async function sendChat(req: ChatSendRequest, opts: SendChatOptions = {})
       ? figureLabelFor(req.imageBlockId, req.pageNumber)
       : ''
 
-  chat.addMessage({
+  const turn = chat.addUserTurn({
+    threadId: req.threadId,
     documentId: req.docId,
-    role: 'user',
     content: req.question,
     contextText: req.contextText || (req.imageBlockId || region ? imageLabel : ''),
     mode: req.mode,
     scope: req.scope,
     pageNumber: req.imageRegionPage || req.pageNumber,
   })
+  const threadUpdate: ChatThreadUpdate = {
+    thread: chat.threadSummary(turn.thread),
+    reason: turn.created ? 'created' : 'updated',
+    requestId: req.requestId,
+  }
+  opts.onThreadUpdate?.(threadUpdate)
+  if (turn.created) {
+    void titleNewThread(turn.thread.id, req.question, historyGeneration, opts.onThreadUpdate)
+  }
 
   let imagePng: Buffer | null = null
   let context: string
@@ -88,7 +132,7 @@ export async function sendChat(req: ChatSendRequest, opts: SendChatOptions = {})
     result = { ok: false, text: '', error: failure }
   } else {
     const template = prompts.effectiveTemplate(req.mode)
-    const history = chat.history(req.docId, prompts.MAX_HISTORY_MESSAGES + 1).slice(0, -1) // drop the just-sent turn
+    const history = chat.history(turn.thread.id, prompts.MAX_HISTORY_MESSAGES + 1).slice(0, -1) // drop the just-sent turn
     const prompt = prompts.assemblePrompt(template, {
       context: context!,
       question: req.question,
@@ -110,27 +154,31 @@ export async function sendChat(req: ChatSendRequest, opts: SendChatOptions = {})
 
   if (result.cancelled) {
     const partial = result.text.trim()
-    if (!partial) return { status: 'stopped' }
-    const reply = chat.addMessage({
+    if (!partial) return { status: 'stopped', thread: chat.threadSummary(chat.requireThread(turn.thread.id)) }
+    const reply = chat.addAssistantMessage({
+      threadId: turn.thread.id,
       documentId: req.docId,
-      role: 'assistant',
       content: partial,
       mode: req.mode,
       scope: req.scope,
       pageNumber: req.imageRegionPage || req.pageNumber,
     })
-    return { status: 'stopped', message: uiMessage(reply) }
+    return { status: 'stopped', message: uiMessage(reply), thread: chat.threadSummary(chat.requireThread(turn.thread.id)) }
   }
 
-  const reply = chat.addMessage({
+  const reply = chat.addAssistantMessage({
+    threadId: turn.thread.id,
     documentId: req.docId,
-    role: 'assistant',
     content: result.ok ? result.text : result.error,
     mode: result.ok ? req.mode : 'error',
     scope: req.scope,
     pageNumber: req.imageRegionPage || req.pageNumber,
   })
-  return { status: 'completed', message: uiMessage(reply) }
+  return {
+    status: 'completed',
+    message: uiMessage(reply),
+    thread: chat.threadSummary(chat.requireThread(turn.thread.id)),
+  }
 }
 
 function figureLabelFor(blockId: number, pageNumber: number): string {
@@ -153,7 +201,11 @@ export function registerChatIpc(): void {
     }
   }
 
-  ipcMain.handle('chat:history', (_e, docId: number) => chat.history(docId).map(uiMessage))
+  ipcMain.handle('chat:list', () => chat.listThreads())
+  ipcMain.handle('chat:history', (_e, req: { docId: number; threadId: number }) => {
+    chat.requireThread(req.threadId, req.docId)
+    return chat.history(req.threadId).map(uiMessage)
+  })
   ipcMain.handle('chat:send', async (event, req: ChatSendRequest) => {
     if (!req.requestId.trim()) throw new Error('A chat request ID is required.')
     if (activeJobs.has(req.requestId)) throw new Error('That chat request is already running.')
@@ -173,6 +225,9 @@ export function registerChatIpc(): void {
           const delta: ChatDelta = { requestId: req.requestId, text }
           sender.send('chat:delta', delta)
         },
+        onThreadUpdate: (update) => {
+          if (!sender.isDestroyed()) sender.send('chat:thread-update', update)
+        },
       })
     } finally {
       sender.removeListener('destroyed', onDestroyed)
@@ -180,15 +235,18 @@ export function registerChatIpc(): void {
     }
   })
   ipcMain.handle('chat:stop', (event, requestId: string) => stopJob(requestId, event.sender))
-  ipcMain.handle('chat:command', (_e, req: { docId: number; text: string }) =>
-    commands.execute(req.docId, req.text),
+  ipcMain.handle('chat:command', (_e, req: { threadId?: number; text: string }) =>
+    commands.execute(req.threadId, req.text),
   )
-  ipcMain.handle('chat:clear', (_e, docId: number) => void chat.clearMessages(docId))
+  ipcMain.handle('chat:clear', (_e, threadId: number) => void chat.clearMessages(threadId))
   ipcMain.handle('chat:clearAll', (event) => {
     stopSenderJobs(event.sender)
-    return chat.clearAllMessages()
+    return chat.clearAllChats()
   })
   ipcMain.handle('ai:getChoice', () => chat.aiChoice())
   ipcMain.handle('ai:setChoice', (_e, choice: AiChoice) => chat.setAiChoice(choice))
+  // The raw stored value: the UI shows what is configured; fallback happens at task time.
+  ipcMain.handle('ai:getBackgroundChoice', () => backgroundChoice())
+  ipcMain.handle('ai:setBackgroundChoice', (_e, choice: AiChoice | null) => chat.setBackgroundAiChoice(choice))
   ipcMain.handle('ai:getProviders', () => chat.aiProviders())
 }

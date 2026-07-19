@@ -1,19 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MODE_LABELS, MODES, PROVIDER_ENV_VARS, PROVIDER_LABELS, PROVIDERS, type Mode, type Provider } from '@shared/constants'
 import type {
+  AiChoice,
+  AiProviderInfo,
   CliExecutableInfo,
   CliExecutableSettings,
   OpenAiCompatibleProfile,
   OpenAiCompatibleProfileDraft,
   PromptInfo,
 } from '@shared/ipc'
-import { cleanIpcError } from '../state/libraryStore'
+import { SettingsGroup, SettingsRow } from '../components/settings/SettingsGroup'
+import { cleanIpcError, useLibraryStore } from '../state/libraryStore'
 import { useReaderStore } from '../state/readerStore'
 
 const EMPTY_EXECUTABLE_DRAFTS: Record<Provider, string> = { claude: '', codex: '', antigravity: '' }
 const EMPTY_API_DRAFT: OpenAiCompatibleProfileDraft = {
   name: '',
-  baseUrl: 'http://localhost:11434/v1',
+  baseUrl: '',
   defaultModel: '',
   apiKey: '',
   models: [],
@@ -39,15 +42,20 @@ export default function Settings() {
   const [executableErrors, setExecutableErrors] = useState<Partial<Record<Provider, string>>>({})
   const [savedExecutable, setSavedExecutable] = useState<Provider | ''>('')
   const [busyExecutable, setBusyExecutable] = useState<Provider | ''>('')
+  const [expandedExecutable, setExpandedExecutable] = useState<Provider | ''>('')
   const [apiProfiles, setApiProfiles] = useState<OpenAiCompatibleProfile[] | null>(null)
   const [apiDraft, setApiDraft] = useState<OpenAiCompatibleProfileDraft | null>(null)
   const [apiBusy, setApiBusy] = useState(false)
   const [apiError, setApiError] = useState('')
   const [apiStatus, setApiStatus] = useState('')
   const [deleteApiProfile, setDeleteApiProfile] = useState<OpenAiCompatibleProfile | null>(null)
+  const [aiProviders, setAiProviders] = useState<AiProviderInfo[] | null>(null)
+  const [backgroundChoice, setBackgroundChoice] = useState<AiChoice | null>(null)
+  const [backgroundError, setBackgroundError] = useState('')
   const [prompts, setPrompts] = useState<Record<Mode, PromptInfo> | null>(null)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [savedMode, setSavedMode] = useState('')
+  const [expandedMode, setExpandedMode] = useState<Mode | ''>('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingHistory, setDeletingHistory] = useState(false)
   const [deleteError, setDeleteError] = useState('')
@@ -66,7 +74,52 @@ export default function Settings() {
       setDrafts(Object.fromEntries(MODES.map((mode) => [mode, result[mode].template])))
     })
     void window.margin.invoke('settings:getOpenAiProviders').then(setApiProfiles)
+    void window.margin.invoke('ai:getProviders').then(setAiProviders)
+    void window.margin.invoke('ai:getBackgroundChoice').then(setBackgroundChoice)
   }, [])
+
+  const backgroundModelGroups = useMemo(() => {
+    let index = 0
+    return (aiProviders ?? [])
+      .filter((provider) => provider.available && provider.models.length)
+      .map((provider) => ({
+        id: provider.id,
+        label: provider.label,
+        options: provider.models.map((model) => ({ index: index++, model })),
+      }))
+  }, [aiProviders])
+  const backgroundOptions = useMemo<AiChoice[]>(
+    () => backgroundModelGroups.flatMap((group) =>
+      group.options.map((option) => ({ provider: group.id, model: option.model, effort: '' })),
+    ),
+    [backgroundModelGroups],
+  )
+  const selectedBackgroundIndex = backgroundChoice
+    ? backgroundOptions.findIndex(
+        (choice) => choice.provider === backgroundChoice.provider && choice.model === backgroundChoice.model,
+      )
+    : -1
+  const backgroundUnavailable = Boolean(backgroundChoice && aiProviders) && selectedBackgroundIndex === -1
+  const backgroundValue = backgroundChoice
+    ? selectedBackgroundIndex === -1 ? 'unavailable' : String(selectedBackgroundIndex)
+    : ''
+  const unavailableBackgroundLabel = () => {
+    if (!backgroundChoice) return ''
+    const provider = aiProviders?.find((candidate) => candidate.id === backgroundChoice.provider)
+    return `${provider?.label ?? backgroundChoice.provider} · ${backgroundChoice.model || 'CLI default'} (unavailable)`
+  }
+
+  const changeBackgroundChoice = async (value: string) => {
+    if (value === 'unavailable') return
+    const next = value === '' ? null : backgroundOptions[Number(value)] ?? null
+    setBackgroundError('')
+    try {
+      const saved = await window.margin.invoke('ai:setBackgroundChoice', next)
+      setBackgroundChoice(saved)
+    } catch (error) {
+      setBackgroundError(cleanIpcError(error))
+    }
+  }
 
   const beginAddApi = () => {
     setApiDraft({ ...EMPTY_API_DRAFT, models: [] })
@@ -119,6 +172,7 @@ export default function Settings() {
         return next
       })
       setApiDraft(null)
+      void window.margin.invoke('ai:getProviders').then(setAiProviders)
     } catch (error) {
       setApiError(cleanIpcError(error))
     } finally {
@@ -134,6 +188,7 @@ export default function Settings() {
       const refreshed = await window.margin.invoke('settings:refreshOpenAiModels', profile.id)
       setApiProfiles((profiles) => profiles?.map((item) => item.id === refreshed.id ? refreshed : item) ?? null)
       setApiStatus(`${profile.name}: refreshed ${refreshed.models.length} ${refreshed.models.length === 1 ? 'model' : 'models'}`)
+      void window.margin.invoke('ai:getProviders').then(setAiProviders)
     } catch (error) {
       setApiError(cleanIpcError(error))
     } finally {
@@ -149,7 +204,9 @@ export default function Settings() {
       await window.margin.invoke('settings:deleteOpenAiProvider', deleteApiProfile.id)
       setApiProfiles((profiles) => profiles?.filter((profile) => profile.id !== deleteApiProfile.id) ?? null)
       setApiDraft((draft) => draft?.id === deleteApiProfile.id ? null : draft)
+      setBackgroundChoice((choice) => choice?.provider === deleteApiProfile.id ? null : choice)
       setDeleteApiProfile(null)
+      void window.margin.invoke('ai:getProviders').then(setAiProviders)
     } catch (error) {
       setApiError(cleanIpcError(error))
     } finally {
@@ -168,6 +225,7 @@ export default function Settings() {
       setExecutables((current) => current ? { ...current, [provider]: info } : current)
       setExecutableDrafts((drafts) => ({ ...drafts, [provider]: info.customPath }))
       setSavedExecutable(provider)
+      void window.margin.invoke('ai:getProviders').then(setAiProviders)
     } catch (error) {
       setExecutableErrors((errors) => ({ ...errors, [provider]: cleanIpcError(error) }))
       setSavedExecutable('')
@@ -184,6 +242,7 @@ export default function Settings() {
       setExecutables((current) => current ? { ...current, [provider]: info } : current)
       setExecutableDrafts((drafts) => ({ ...drafts, [provider]: '' }))
       setSavedExecutable(provider)
+      void window.margin.invoke('ai:getProviders').then(setAiProviders)
     } catch (error) {
       setExecutableErrors((errors) => ({ ...errors, [provider]: cleanIpcError(error) }))
       setSavedExecutable('')
@@ -248,9 +307,10 @@ export default function Settings() {
     setDeletingHistory(true)
     setDeleteError('')
     try {
-      const count = await window.margin.invoke('chat:clearAll')
+      const result = await window.margin.invoke('chat:clearAll')
       useReaderStore.getState().clearAllChatHistory()
-      setDeleteStatus(`Deleted ${count} chat ${count === 1 ? 'message' : 'messages'} across all papers.`)
+      useLibraryStore.getState().clearChatThreads()
+      setDeleteStatus(`Deleted ${result.threadsDeleted} ${result.threadsDeleted === 1 ? 'chat' : 'chats'} across all papers.`)
       setDeleteDialogOpen(false)
     } catch (err) {
       setDeleteError(cleanIpcError(err))
@@ -265,6 +325,89 @@ export default function Settings() {
     : undefined
   const weakCredentialStorage = apiProfiles?.some((profile) => profile.credentialProtection === 'basic')
 
+  const apiEditor = apiDraft && (
+    <>
+      <span className="executable-label">{apiDraft.id ? 'Edit API profile' : 'Add API profile'}</span>
+      <label className="settings-field">
+        <span>Name</span>
+        <input
+          className="text-input"
+          value={apiDraft.name}
+          placeholder="e.g. OpenRouter"
+          maxLength={64}
+          onChange={(event) => setApiDraft({ ...apiDraft, name: event.target.value })}
+        />
+      </label>
+      <label className="settings-field">
+        <span>Base URL</span>
+        <input
+          className="text-input mono"
+          value={apiDraft.baseUrl}
+          placeholder="http://localhost:11434/v1"
+          spellCheck={false}
+          onChange={(event) => setApiDraft({ ...apiDraft, baseUrl: event.target.value })}
+        />
+      </label>
+      <label className="settings-field">
+        <span>API key <span className="field-optional">optional</span></span>
+        <input
+          className="text-input mono"
+          type="password"
+          autoComplete="off"
+          value={apiDraft.apiKey ?? ''}
+          disabled={apiDraft.clearApiKey}
+          placeholder={editingApiProfile?.hasApiKey ? 'Leave blank to keep the saved key' : 'Optional for local endpoints'}
+          onChange={(event) => setApiDraft({ ...apiDraft, apiKey: event.target.value, clearApiKey: false })}
+        />
+      </label>
+      {editingApiProfile?.hasApiKey && (
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={Boolean(apiDraft.clearApiKey)}
+            onChange={(event) => setApiDraft({ ...apiDraft, clearApiKey: event.target.checked, apiKey: '' })}
+          />
+          Remove saved API key
+        </label>
+      )}
+      <label className="settings-field">
+        <span>Default model</span>
+        <input
+          className="text-input mono"
+          value={apiDraft.defaultModel}
+          list="openai-compatible-models"
+          placeholder="llama3.2"
+          spellCheck={false}
+          onChange={(event) => setApiDraft({ ...apiDraft, defaultModel: event.target.value })}
+        />
+        <datalist id="openai-compatible-models">
+          {(apiDraft.models ?? []).map((model) => <option value={model} key={model} />)}
+        </datalist>
+      </label>
+      <span className="settings-field-help">
+        Test the connection to load models, or enter one manually to save an offline endpoint.
+      </span>
+      {apiError && <span className="executable-error" role="alert">{apiError}</span>}
+      {apiStatus && <span className="settings-success" role="status">{apiStatus}</span>}
+      <div className="executable-actions">
+        <button className="btn btn-soft" type="button" disabled={apiBusy || !apiDraft.baseUrl.trim()} onClick={() => void testApiConnection()}>
+          {apiBusy ? 'Working…' : 'Test connection'}
+        </button>
+        <button
+          className="btn"
+          type="button"
+          disabled={apiBusy || !apiDraft.name.trim() || !apiDraft.baseUrl.trim() || !apiDraft.defaultModel.trim()}
+          onClick={() => void saveApiProfile()}
+        >
+          Save
+        </button>
+        <button className="btn-ghost" type="button" disabled={apiBusy} onClick={() => setApiDraft(null)}>
+          Cancel
+        </button>
+      </div>
+    </>
+  )
+
   return (
     <section className="route-page">
       <header className="route-header">
@@ -272,279 +415,265 @@ export default function Settings() {
       </header>
       <div className="route-scroll settings-scroll">
         <div className="settings-content">
-          <div className="settings-section">
-            <div className="settings-section-heading">
-              <div>
-                <span className="settings-section-title">OpenAI-compatible APIs</span>
-                <span className="settings-section-copy">
-                  Add Ollama or another compatible endpoint. Profiles are available to chats and automatic paper tagging.
+          <SettingsGroup title="Models">
+            <SettingsRow
+              title="Default model"
+              description="Model used for background tasks like chat titles and paper topics. Chats always use the model picked in the chat sidebar."
+              control={
+                <select
+                  className="settings-select"
+                  aria-label="Default model for background tasks"
+                  value={backgroundValue}
+                  disabled={!aiProviders}
+                  onChange={(event) => void changeBackgroundChoice(event.target.value)}
+                >
+                  <option value="">Auto (use chat selection)</option>
+                  {backgroundUnavailable && (
+                    <option value="unavailable" disabled>{unavailableBackgroundLabel()}</option>
+                  )}
+                  {backgroundModelGroups.map((group) => (
+                    <optgroup key={group.id} label={group.label}>
+                      {group.options.map((option) => (
+                        <option key={`${group.id} ${option.model}`} value={String(option.index)}>
+                          {option.model || 'CLI default'}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              }
+            >
+              {backgroundError && <span className="executable-error" role="alert">{backgroundError}</span>}
+            </SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup
+            title="OpenAI-compatible APIs"
+            description="Connect any OpenAI-compatible API: Ollama, LM Studio, vLLM, OpenRouter, or OpenAI itself. Profiles are available to chats and automatic paper tagging."
+            action={!apiDraft
+              ? <button className="btn" type="button" onClick={beginAddApi}>Add API</button>
+              : undefined}
+          >
+            {weakCredentialStorage && (
+              <div className="settings-card-note">
+                <span className="credential-warning" role="status">
+                  Your Linux session does not provide an OS secret store. Saved API keys receive only basic local protection.
                 </span>
               </div>
-              {!apiDraft && (
-                <button className="btn" type="button" onClick={beginAddApi}>Add API</button>
-              )}
-            </div>
-            {weakCredentialStorage && (
-              <span className="credential-warning" role="status">
-                Your Linux session does not provide an OS secret store. Saved API keys receive only basic local protection.
-              </span>
             )}
             {apiProfiles?.map((profile) => (
-              <div className="api-profile-card" key={profile.id}>
-                <div className="card-head">
-                  <span className="executable-label">{profile.name}</span>
-                  <span className="api-profile-model mono">{profile.defaultModel}</span>
-                  <span style={{ flex: 1 }} />
-                  <button className="btn-ghost" type="button" disabled={apiBusy} onClick={() => beginEditApi(profile)}>
-                    Edit
-                  </button>
-                </div>
-                <span className="executable-source mono" title={profile.baseUrl}>{profile.baseUrl}</span>
-                <span className="api-profile-meta mono">
-                  {profile.models.length} cached {profile.models.length === 1 ? 'model' : 'models'} · {profile.hasApiKey ? 'API key saved' : 'No API key'}
-                </span>
-                <div className="executable-actions">
-                  <button className="btn btn-soft" type="button" disabled={apiBusy} onClick={() => void refreshApiModels(profile)}>
-                    Refresh models
-                  </button>
-                  <button className="btn-ghost danger-link" type="button" disabled={apiBusy} onClick={() => setDeleteApiProfile(profile)}>
-                    Delete
-                  </button>
-                </div>
-              </div>
+              <SettingsRow
+                key={profile.id}
+                title={profile.name}
+                description={
+                  <span className="mono">
+                    {profile.baseUrl} · {profile.models.length} {profile.models.length === 1 ? 'model' : 'models'} · {profile.hasApiKey ? 'API key saved' : 'No API key'}
+                  </span>
+                }
+                control={
+                  <>
+                    <button className="btn-ghost" type="button" disabled={apiBusy} onClick={() => void refreshApiModels(profile)}>
+                      Refresh models
+                    </button>
+                    <button className="btn-ghost" type="button" disabled={apiBusy} onClick={() => beginEditApi(profile)}>
+                      Edit
+                    </button>
+                    <button className="btn-ghost danger-link" type="button" disabled={apiBusy} onClick={() => setDeleteApiProfile(profile)}>
+                      Delete
+                    </button>
+                  </>
+                }
+              >
+                {apiDraft?.id === profile.id && apiEditor}
+              </SettingsRow>
             ))}
             {apiProfiles?.length === 0 && !apiDraft && (
-              <span className="settings-empty">No API profiles yet. For local Ollama, use http://localhost:11434/v1.</span>
-            )}
-            {apiDraft && (
-              <div className="api-profile-editor">
-                <div className="card-head">
-                  <span className="executable-label">{apiDraft.id ? 'Edit API profile' : 'Add API profile'}</span>
-                </div>
-                <label className="settings-field">
-                  <span>Name</span>
-                  <input
-                    className="text-input"
-                    value={apiDraft.name}
-                    placeholder="Ollama"
-                    maxLength={64}
-                    onChange={(event) => setApiDraft({ ...apiDraft, name: event.target.value })}
-                  />
-                </label>
-                <label className="settings-field">
-                  <span>Base URL</span>
-                  <input
-                    className="text-input mono"
-                    value={apiDraft.baseUrl}
-                    placeholder="http://localhost:11434/v1"
-                    spellCheck={false}
-                    onChange={(event) => setApiDraft({ ...apiDraft, baseUrl: event.target.value })}
-                  />
-                </label>
-                <label className="settings-field">
-                  <span>API key <span className="field-optional">optional</span></span>
-                  <input
-                    className="text-input mono"
-                    type="password"
-                    autoComplete="off"
-                    value={apiDraft.apiKey ?? ''}
-                    disabled={apiDraft.clearApiKey}
-                    placeholder={editingApiProfile?.hasApiKey ? 'Leave blank to keep the saved key' : 'Not required by local Ollama'}
-                    onChange={(event) => setApiDraft({ ...apiDraft, apiKey: event.target.value, clearApiKey: false })}
-                  />
-                </label>
-                {editingApiProfile?.hasApiKey && (
-                  <label className="settings-check">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(apiDraft.clearApiKey)}
-                      onChange={(event) => setApiDraft({ ...apiDraft, clearApiKey: event.target.checked, apiKey: '' })}
-                    />
-                    Remove saved API key
-                  </label>
-                )}
-                <label className="settings-field">
-                  <span>Default model</span>
-                  <input
-                    className="text-input mono"
-                    value={apiDraft.defaultModel}
-                    list="openai-compatible-models"
-                    placeholder="llama3.2"
-                    spellCheck={false}
-                    onChange={(event) => setApiDraft({ ...apiDraft, defaultModel: event.target.value })}
-                  />
-                  <datalist id="openai-compatible-models">
-                    {(apiDraft.models ?? []).map((model) => <option value={model} key={model} />)}
-                  </datalist>
-                </label>
-                <span className="settings-field-help">
-                  Test the connection to load models, or enter one manually to save an offline endpoint.
+              <div className="settings-card-note">
+                <span className="settings-empty">
+                  No API profiles yet. Any OpenAI-compatible endpoint works, for example http://localhost:11434/v1 for local Ollama.
                 </span>
-                {apiError && <span className="executable-error" role="alert">{apiError}</span>}
-                {apiStatus && <span className="settings-success" role="status">{apiStatus}</span>}
-                <div className="executable-actions">
-                  <button className="btn btn-soft" type="button" disabled={apiBusy || !apiDraft.baseUrl.trim()} onClick={() => void testApiConnection()}>
-                    {apiBusy ? 'Working…' : 'Test connection'}
-                  </button>
-                  <button
-                    className="btn"
-                    type="button"
-                    disabled={apiBusy || !apiDraft.name.trim() || !apiDraft.baseUrl.trim() || !apiDraft.defaultModel.trim()}
-                    onClick={() => void saveApiProfile()}
-                  >
-                    Save
-                  </button>
-                  <button className="btn-ghost" type="button" disabled={apiBusy} onClick={() => setApiDraft(null)}>
-                    Cancel
-                  </button>
-                </div>
               </div>
             )}
-            {!apiDraft && apiError && <span className="executable-error" role="alert">{apiError}</span>}
-            {!apiDraft && apiStatus && <span className="settings-success" role="status">{apiStatus}</span>}
-          </div>
-          <div className="settings-section">
-            <span className="settings-section-title">AI command-line tools</span>
-            <span className="settings-section-copy">
-              Choose an executable when a CLI is not available on the system PATH. Changes apply to
-              new chats and automatic paper tagging immediately.
-            </span>
+            {apiDraft && !apiDraft.id && <div className="settings-row-detail">{apiEditor}</div>}
+            {!apiDraft && apiError && (
+              <div className="settings-card-note"><span className="executable-error" role="alert">{apiError}</span></div>
+            )}
+            {!apiDraft && apiStatus && (
+              <div className="settings-card-note"><span className="settings-success" role="status">{apiStatus}</span></div>
+            )}
+          </SettingsGroup>
+          <SettingsGroup
+            title="AI command-line tools"
+            description="Choose an executable when a CLI is not available on the system PATH. Changes apply to new chats and automatic paper tagging immediately."
+          >
             {executables && PROVIDERS.map((provider) => {
               const info = executables[provider]
               const busy = busyExecutable === provider
+              const expanded = expandedExecutable === provider
               return (
-                <div key={provider} className="executable-card">
-                  <div className="card-head">
-                    <span className="executable-label">{PROVIDER_LABELS[provider]} CLI</span>
-                    <span style={{ flex: 1 }} />
-                    {savedExecutable === provider && <span className="settings-saved mono">saved ✓</span>}
-                  </div>
-                  <div className="executable-input-row">
-                    <input
-                      className="text-input mono executable-input"
-                      value={executableDrafts[provider]}
-                      placeholder={`Automatic (${provider})`}
-                      spellCheck={false}
-                      onChange={(event) => {
-                        setExecutableDrafts((drafts) => ({ ...drafts, [provider]: event.target.value }))
-                        setExecutableErrors((errors) => ({ ...errors, [provider]: '' }))
-                        setSavedExecutable('')
-                      }}
-                    />
-                    <button
-                      className="btn btn-soft"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void chooseExecutablePath(provider)}
+                <SettingsRow
+                  key={provider}
+                  title={`${PROVIDER_LABELS[provider]} CLI`}
+                  description={
+                    <span
+                      className={`mono executable-status${info.detected ? ' detected' : ''}`}
+                      title={info.detected ? info.resolvedPath : info.effectiveCommand}
                     >
-                      Browse…
-                    </button>
-                  </div>
-                  <span className="executable-source mono" title={info.effectiveCommand}>
-                    {executableDescription(provider, info)}
-                  </span>
-                  <span
-                    className={`executable-status mono${info.detected ? ' detected' : ''}`}
-                    title={info.detected ? info.resolvedPath : info.effectiveCommand}
-                  >
-                    {detectionStatus(info)}
-                  </span>
-                  {executableErrors[provider] && (
-                    <span className="executable-error" role="alert">{executableErrors[provider]}</span>
-                  )}
-                  <div className="executable-actions">
-                    <button
-                      className="btn"
-                      type="button"
-                      disabled={busy || !executableDrafts[provider].trim()}
-                      onClick={() => void saveExecutablePath(provider)}
-                    >
-                      Save
-                    </button>
-                    {info.customPath && (
+                      {detectionStatus(info)}
+                    </span>
+                  }
+                  control={
+                    <>
+                      {savedExecutable === provider && <span className="settings-saved mono">saved ✓</span>}
                       <button
                         className="btn-ghost"
                         type="button"
-                        disabled={busy}
-                        onClick={() => void resetExecutablePath(provider)}
+                        onClick={() => setExpandedExecutable(expanded ? '' : provider)}
                       >
-                        Use automatic default
+                        {expanded ? 'Collapse' : 'Configure'}
                       </button>
-                    )}
-                  </div>
-                </div>
+                    </>
+                  }
+                >
+                  {expanded && (
+                    <>
+                      <div className="executable-input-row">
+                        <input
+                          className="text-input mono executable-input"
+                          value={executableDrafts[provider]}
+                          placeholder={`Automatic (${provider})`}
+                          spellCheck={false}
+                          onChange={(event) => {
+                            setExecutableDrafts((drafts) => ({ ...drafts, [provider]: event.target.value }))
+                            setExecutableErrors((errors) => ({ ...errors, [provider]: '' }))
+                            setSavedExecutable('')
+                          }}
+                        />
+                        <button
+                          className="btn btn-soft"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void chooseExecutablePath(provider)}
+                        >
+                          Browse…
+                        </button>
+                      </div>
+                      <span className="executable-source mono" title={info.effectiveCommand}>
+                        {executableDescription(provider, info)}
+                      </span>
+                      {executableErrors[provider] && (
+                        <span className="executable-error" role="alert">{executableErrors[provider]}</span>
+                      )}
+                      <div className="executable-actions">
+                        <button
+                          className="btn"
+                          type="button"
+                          disabled={busy || !executableDrafts[provider].trim()}
+                          onClick={() => void saveExecutablePath(provider)}
+                        >
+                          Save
+                        </button>
+                        {info.customPath && (
+                          <button
+                            className="btn-ghost"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void resetExecutablePath(provider)}
+                          >
+                            Use automatic default
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </SettingsRow>
               )
             })}
-          </div>
-          <div className="settings-section">
-            <span className="settings-section-title">Mode prompts</span>
-            <span className="settings-section-copy">
-              Templates for each assistant mode. Placeholders: {'{context}'} is the selected block, page, or paper
-              text; {'{question}'} is what you typed; {'{scope}'} is where the excerpt came from.
-            </span>
+          </SettingsGroup>
+          <SettingsGroup
+            title="Prompts"
+            description={
+              <>
+                Templates for each assistant mode. Placeholders: {'{context}'} is the selected block, page, or paper
+                text; {'{question}'} is what you typed; {'{scope}'} is where the excerpt came from.
+              </>
+            }
+          >
             {prompts &&
-              MODES.map((mode) => (
-                <div key={mode} className="prompt-card">
-                  <div className="card-head">
-                    <span style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--m-ink)' }}>{MODE_LABELS[mode]}</span>
-                    {prompts[mode].customized && (
-                      <span className="mono" style={{ color: 'var(--m-accent-text)', fontSize: 10.5 }}>
-                        customized
-                      </span>
+              MODES.map((mode) => {
+                const expanded = expandedMode === mode
+                return (
+                  <SettingsRow
+                    key={mode}
+                    title={MODE_LABELS[mode]}
+                    description={prompts[mode].customized ? 'Customized' : 'Default template'}
+                    control={
+                      <>
+                        {savedMode === mode && <span className="settings-saved mono">saved ✓</span>}
+                        <button
+                          className="btn-ghost"
+                          type="button"
+                          onClick={() => setExpandedMode(expanded ? '' : mode)}
+                        >
+                          {expanded ? 'Collapse' : 'Edit'}
+                        </button>
+                      </>
+                    }
+                  >
+                    {expanded && (
+                      <>
+                        <textarea
+                          rows={6}
+                          aria-label={`${MODE_LABELS[mode]} prompt template`}
+                          value={drafts[mode] ?? ''}
+                          onChange={(e) => {
+                            setDrafts((d) => ({ ...d, [mode]: e.target.value }))
+                            setSavedMode('')
+                          }}
+                        />
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button
+                            className="btn"
+                            style={{ background: 'var(--m-accent)', color: 'var(--m-inv-text)', border: 'none' }}
+                            onClick={() => void save(mode)}
+                          >
+                            Save
+                          </button>
+                          {prompts[mode].customized && (
+                            <button className="btn-ghost" onClick={() => void reset(mode)}>
+                              Reset to default
+                            </button>
+                          )}
+                        </div>
+                      </>
                     )}
-                    <span style={{ flex: 1 }} />
-                    {savedMode === mode && (
-                      <span className="mono" style={{ color: 'var(--m-accent-text)', fontSize: 10.5 }}>
-                        saved ✓
-                      </span>
-                    )}
-                  </div>
-                  <textarea
-                    rows={6}
-                    value={drafts[mode] ?? ''}
-                    onChange={(e) => {
-                      setDrafts((d) => ({ ...d, [mode]: e.target.value }))
-                      setSavedMode('')
-                    }}
-                  />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      className="btn"
-                      style={{ background: 'var(--m-accent)', color: 'var(--m-inv-text)', border: 'none' }}
-                      onClick={() => void save(mode)}
-                    >
-                      Save
-                    </button>
-                    {prompts[mode].customized && (
-                      <button className="btn-ghost" onClick={() => void reset(mode)}>
-                        Reset to default
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-          </div>
-          <div className="settings-section">
-            <span className="settings-section-title">Data</span>
-            <div className="danger-card">
-              <div className="danger-card-copy">
-                <span className="danger-card-title">Delete all chat histories</span>
+                  </SettingsRow>
+                )
+              })}
+          </SettingsGroup>
+          <SettingsGroup title="Data">
+            <SettingsRow
+              danger
+              title="Delete all chats"
+              description={
                 <span id="delete-chat-setting-description">
                   Permanently remove every assistant conversation across all papers. Your papers, PDFs, and
                   settings will be preserved.
                 </span>
-              </div>
-              <button
-                className="btn btn-danger"
-                type="button"
-                aria-describedby="delete-chat-setting-description"
-                onClick={openDeleteDialog}
-              >
-                Delete all chat histories
-              </button>
+              }
+              control={
+                <button
+                  className="btn btn-danger"
+                  type="button"
+                  aria-describedby="delete-chat-setting-description"
+                  onClick={openDeleteDialog}
+                >
+                  Delete all chats
+                </button>
+              }
+            >
               {deleteStatus && <span className="settings-success" role="status">{deleteStatus}</span>}
-            </div>
-          </div>
+            </SettingsRow>
+          </SettingsGroup>
         </div>
       </div>
       {deleteApiProfile && (
@@ -582,7 +711,7 @@ export default function Settings() {
             aria-describedby="delete-chat-description"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2 id="delete-chat-title">Delete all chat histories?</h2>
+            <h2 id="delete-chat-title">Delete all chats?</h2>
             <p className="dialog-copy" id="delete-chat-description">
               This permanently deletes every conversation across all of your papers. Your papers and settings
               will not be affected.

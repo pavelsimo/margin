@@ -44,9 +44,24 @@ export interface UiMessage {
   isError: boolean
 }
 
+export interface ChatThreadSummary {
+  id: number
+  documentId: number
+  title: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ChatThreadUpdate {
+  thread: ChatThreadSummary
+  reason: 'created' | 'updated' | 'titled'
+  requestId?: string
+}
+
 export interface ChatSendRequest {
   requestId: string
   docId: number
+  threadId?: number
   question: string
   mode: Mode
   scope: 'page' | 'document'
@@ -64,8 +79,13 @@ export interface ChatDelta {
 }
 
 export type ChatSendResult =
-  | { status: 'completed'; message: UiMessage }
-  | { status: 'stopped'; message?: UiMessage }
+  | { status: 'completed'; message: UiMessage; thread: ChatThreadSummary }
+  | { status: 'stopped'; message?: UiMessage; thread: ChatThreadSummary }
+
+export interface ClearAllChatsResult {
+  threadsDeleted: number
+  messagesDeleted: number
+}
 
 export interface AiChoice {
   provider: AiProviderId
@@ -172,14 +192,17 @@ export interface IpcApi {
     pageNumber: number
     bbox: [number, number, number, number] // normalized 0-1 fractions
   }) => string | null // PNG data URL, null when unavailable
-  'chat:history': (docId: number) => UiMessage[]
+  'chat:list': () => ChatThreadSummary[]
+  'chat:history': (req: { docId: number; threadId: number }) => UiMessage[]
   'chat:send': (req: ChatSendRequest) => ChatSendResult
   'chat:stop': (requestId: string) => boolean
-  'chat:command': (req: { docId: number; text: string }) => { kind: 'clear' | 'help' | 'unknown'; text: string }
-  'chat:clear': (docId: number) => void
-  'chat:clearAll': () => number
+  'chat:command': (req: { threadId?: number; text: string }) => { kind: 'clear' | 'help' | 'unknown'; text: string }
+  'chat:clear': (threadId: number) => void
+  'chat:clearAll': () => ClearAllChatsResult
   'ai:getChoice': () => AiChoice
   'ai:setChoice': (choice: AiChoice) => AiChoice
+  'ai:getBackgroundChoice': () => AiChoice | null
+  'ai:setBackgroundChoice': (choice: AiChoice | null) => AiChoice | null
   'ai:getProviders': () => AiProviderInfo[]
   'prompts:get': () => Record<Mode, PromptInfo>
   'prompts:set': (req: { mode: Mode; template: string }) => PromptInfo
@@ -208,6 +231,7 @@ export interface MarginApi {
   onIngestUpdate(listener: (update: IngestUpdate) => void): () => void
   onWindowState(listener: (state: AppWindowState) => void): () => void
   onChatDelta(listener: (delta: ChatDelta) => void): () => void
+  onChatThreadUpdate(listener: (update: ChatThreadUpdate) => void): () => void
   setZoomFactor(factor: number): void
 }
 

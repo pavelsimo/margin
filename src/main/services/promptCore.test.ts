@@ -15,6 +15,7 @@ import {
 function msg(role: 'user' | 'assistant', content: string): ChatMessageRow {
   return {
     id: 1,
+    thread_id: 1,
     document_id: 1,
     user_id: 1,
     role,

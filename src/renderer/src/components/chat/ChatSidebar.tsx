@@ -212,7 +212,7 @@ export default function ChatSidebar() {
     <div className="chat-sidebar">
       <div className="chat-title">
         <span style={{ color: 'var(--m-accent)', fontSize: 13 }}>✦</span>
-        Assistant
+        <span title={store.activeThread?.title}>{store.activeThread?.title || 'New chat'}</span>
       </div>
       <div className="scope-toggle">
         <button className={store.scope === 'page' ? 'active' : ''} onClick={() => store.setScope('page')}>

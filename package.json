@@ -15,8 +15,6 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
-    "@fontsource/geist-mono": "^5.2.8",
-    "@fontsource/geist-sans": "^5.2.5",
     "@fontsource/source-serif-4": "^5.2.9",
     "@radix-ui/themes": "^3.3.0",
     "better-sqlite3": "^12.11.1",

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AppWindowState, PaperRow } from '@shared/ipc'
+import type { AppWindowState, ChatThreadSummary, PaperRow } from '@shared/ipc'
 import { APP_ZOOM_LEVELS, DEFAULT_APP_ZOOM } from '@shared/constants'
 
 export type ThemeMode = 'dark' | 'light'
@@ -23,8 +23,17 @@ export function sidebarPaperFilter(rows: PaperRow[], query: string): PaperRow[] 
   )
 }
 
+export function visibleSidebarThreads(
+  rows: ChatThreadSummary[],
+  expanded: boolean,
+  activeThreadId?: number,
+): ChatThreadSummary[] {
+  if (expanded || (activeThreadId && rows.findIndex((row) => row.id === activeThreadId) >= 5)) return rows
+  return rows.slice(0, 5)
+}
+
 export function isReaderRoute(pathname: string): boolean {
-  return /^\/read\/\d+$/.test(pathname)
+  return /^\/read\/\d+(?:\/new|\/chat\/\d+)?$/.test(pathname)
 }
 
 export type AppZoomShortcut = 'in' | 'out' | 'reset'

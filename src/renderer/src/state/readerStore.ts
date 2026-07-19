@@ -1,6 +1,16 @@
 import { create } from 'zustand'
 import type { BlockRow } from '@shared/models'
-import type { AiChoice, AiProviderInfo, ChatDelta, ChatSendRequest, ChatSendResult, DocumentInfo, UiMessage } from '@shared/ipc'
+import type {
+  AiChoice,
+  AiProviderInfo,
+  ChatDelta,
+  ChatSendRequest,
+  ChatSendResult,
+  ChatThreadSummary,
+  ChatThreadUpdate,
+  DocumentInfo,
+  UiMessage,
+} from '@shared/ipc'
 import {
   CHIP_PREVIEW_CHARS,
   IMAGE_MODE_QUESTIONS,
@@ -33,6 +43,7 @@ export interface DisplayMessage {
 }
 
 let messageKey = 0
+let readerLoadSequence = 0
 function displayRow(message: UiMessage, key?: number): DisplayMessage {
   return {
     key: key ?? ++messageKey,
@@ -66,6 +77,8 @@ interface SendOpts {
 
 interface ReaderStore {
   documentId: number
+  activeThreadId: number
+  activeThread: ChatThreadSummary | null
   doc: DocumentInfo | null
   currentPage: number
   pageImage: string
@@ -96,7 +109,8 @@ interface ReaderStore {
   ai: AiChoice
   aiProviders: AiProviderInfo[] | null
 
-  loadReader: (docId: number) => Promise<void>
+  loadReader: (docId: number, threadId?: number | null) => Promise<void>
+  startNewChat: (docId: number) => void
   loadPage: (number: number) => Promise<void>
   nextPage: () => void
   prevPage: () => void
@@ -115,6 +129,7 @@ interface ReaderStore {
   sendSuggestion: (text: string) => void
   stop: () => void
   clearAllChatHistory: () => void
+  applyThreadUpdate: (update: ChatThreadUpdate) => void
   chooseAiProvider: (provider: AiProviderId) => Promise<void>
   chooseAiModel: (model: string) => Promise<void>
   chooseAiEffort: (effort: string) => Promise<void>
@@ -236,6 +251,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
     const request: ChatSendRequest = {
       requestId,
       docId: state.documentId,
+      threadId: state.activeThreadId || undefined,
       question,
       mode,
       scope: state.scope,
@@ -277,6 +293,8 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
           ? {
               typing: false,
               activeRequestId: '',
+              activeThreadId: result.thread.id,
+              activeThread: result.thread,
               messages: settleDraft(s.messages, draft.key, result),
             }
           : {},
@@ -302,8 +320,11 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
   }
 
   async function runCommand(text: string): Promise<void> {
-    const { documentId } = get()
-    const outcome = await window.margin.invoke('chat:command', { docId: documentId, text })
+    const { activeThreadId } = get()
+    const outcome = await window.margin.invoke('chat:command', {
+      threadId: activeThreadId || undefined,
+      text,
+    })
     if (outcome.kind === 'clear') {
       set({ messages: [] })
     } else {
@@ -313,6 +334,8 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
 
   return {
     documentId: 0,
+    activeThreadId: 0,
+    activeThread: null,
     doc: null,
     currentPage: 1,
     pageImage: '',
@@ -329,17 +352,33 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
     ai: { provider: 'claude', model: '', effort: '' },
     aiProviders: null,
 
-    loadReader: async (docId) => {
+    loadReader: async (docId, requestedThreadId) => {
+      const loadSequence = ++readerLoadSequence
       const activeRequestId = get().activeRequestId
       if (activeRequestId) await window.margin.invoke('chat:stop', activeRequestId).catch(() => false)
-      const doc = await window.margin.invoke('document:get', docId)
-      const [history, ai, aiProviders] = await Promise.all([
-        window.margin.invoke('chat:history', docId),
+      const [doc, threads, ai, aiProviders] = await Promise.all([
+        window.margin.invoke('document:get', docId),
+        window.margin.invoke('chat:list'),
         window.margin.invoke('ai:getChoice'),
         window.margin.invoke('ai:getProviders'),
       ])
+      if (loadSequence !== readerLoadSequence) return
+      const resolvedThreadId = requestedThreadId === undefined
+        ? (threads.find((thread) => thread.documentId === docId)?.id ?? 0)
+        : requestedThreadId && threads.some((thread) => thread.id === requestedThreadId && thread.documentId === docId)
+          ? requestedThreadId
+          : 0
+      const history = resolvedThreadId
+        ? await window.margin.invoke('chat:history', { docId, threadId: resolvedThreadId })
+        : []
+      if (loadSequence !== readerLoadSequence) return
+      const activeThread = resolvedThreadId
+        ? (threads.find((thread) => thread.id === resolvedThreadId) ?? null)
+        : null
       set({
         documentId: docId,
+        activeThreadId: resolvedThreadId,
+        activeThread,
         doc,
         currentPage: 1,
         messages: history.map(displayRow),
@@ -355,6 +394,25 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
       })
       void get().refreshAiProviders()
       await get().loadPage(1)
+    },
+
+    startNewChat: (docId) => {
+      readerLoadSequence++
+      thumbSeq++
+      const state = get()
+      if (state.activeRequestId) void window.margin.invoke('chat:stop', state.activeRequestId).catch(() => false)
+      set({
+        documentId: docId,
+        doc: state.documentId === docId ? state.doc : null,
+        activeThreadId: 0,
+        activeThread: null,
+        messages: [],
+        inputText: '',
+        ...clearedChip,
+        ...clearedSelection,
+        typing: false,
+        activeRequestId: '',
+      })
     },
 
     loadPage: async (number) => {
@@ -525,10 +583,22 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
       if (activeRequestId) void window.margin.invoke('chat:stop', activeRequestId)
       set((state) => ({
         historyGeneration: state.historyGeneration + 1,
+        activeThreadId: 0,
+        activeThread: null,
         messages: [],
         typing: false,
         activeRequestId: '',
       }))
+    },
+
+    applyThreadUpdate: (update) => {
+      const state = get()
+      if (update.thread.documentId !== state.documentId) return
+      if (update.reason === 'created' && update.requestId === state.activeRequestId) {
+        set({ activeThreadId: update.thread.id, activeThread: update.thread })
+      } else if (update.thread.id === state.activeThreadId) {
+        set({ activeThread: update.thread })
+      }
     },
 
     chooseAiProvider: async (provider) => {

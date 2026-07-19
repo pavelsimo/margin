@@ -3,7 +3,7 @@
 import { clearMessages } from './chat'
 
 const COMMANDS: Record<string, string> = {
-  clear: 'Delete the chat history for this paper',
+  clear: 'Delete the history in this chat',
   help: 'Show available commands',
 }
 
@@ -29,10 +29,10 @@ export function helpText(): string {
     .join('\n')
 }
 
-export function execute(documentId: number, text: string): CommandOutcome {
+export function execute(threadId: number | undefined, text: string): CommandOutcome {
   const name = parse(text)
   if (name === 'clear') {
-    clearMessages(documentId)
+    if (threadId) clearMessages(threadId)
     return { kind: 'clear', text: '' }
   }
   if (name === 'help') {
