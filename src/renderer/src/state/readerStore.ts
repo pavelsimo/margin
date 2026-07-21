@@ -115,6 +115,7 @@ interface ReaderStore {
   loadReader: (docId: number, threadId?: number | null) => Promise<void>
   startNewChat: (docId: number) => void
   loadPage: (number: number) => Promise<void>
+  goToPage: (number: number) => void
   nextPage: () => void
   prevPage: () => void
   zoomIn: () => void
@@ -428,20 +429,21 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
       }
     },
 
-    nextPage: () => {
+    goToPage: (number) => {
       const { currentPage, doc, loadPage } = get()
-      if (doc && currentPage < doc.pageCount) {
-        set({ currentPage: currentPage + 1, ...clearedSelection })
-        void loadPage(currentPage + 1)
-      }
+      if (!doc || !Number.isInteger(number) || number < 1 || number > doc.pageCount || number === currentPage) return
+      set({ currentPage: number, ...clearedSelection })
+      void loadPage(number)
+    },
+
+    nextPage: () => {
+      const { currentPage, goToPage } = get()
+      goToPage(currentPage + 1)
     },
 
     prevPage: () => {
-      const { currentPage, loadPage } = get()
-      if (currentPage > 1) {
-        set({ currentPage: currentPage - 1, ...clearedSelection })
-        void loadPage(currentPage - 1)
-      }
+      const { currentPage, goToPage } = get()
+      goToPage(currentPage - 1)
     },
 
     zoomIn: () => {

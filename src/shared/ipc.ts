@@ -26,6 +26,13 @@ export interface DocumentInfo {
   failed: boolean
   failMessage: string
   scanned: boolean
+  outline: PdfOutlineItem[]
+}
+
+export interface PdfOutlineItem {
+  title: string
+  page: number // 1-based
+  children: PdfOutlineItem[]
 }
 
 export interface PageData {

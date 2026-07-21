@@ -50,6 +50,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle('dark', ui.theme === 'dark')
   }, [ui.theme])
 
+  useEffect(() => {
+    if (!isReaderRoute(location.pathname)) ui.setDocumentOutlineOpen(false)
+  }, [location.pathname, ui.setDocumentOutlineOpen])
+
   useLayoutEffect(() => {
     window.margin.setZoomFactor(ui.appZoom / 100)
   }, [ui.appZoom])

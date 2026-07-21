@@ -4,7 +4,7 @@ import type { DocumentInfo, PageData } from '@shared/ipc'
 import { db, USER_ID } from '../db'
 import { pageImageUrl } from '../protocol'
 import { resolvePdf } from '../paths'
-import { renderPageRegionImage, RENDER_ZOOM } from '../services/pdf'
+import { extractOutline, renderPageRegionImage, RENDER_ZOOM } from '../services/pdf'
 
 const THUMB_TARGET_PX = 480
 
@@ -38,6 +38,7 @@ function getDocument(docId: number): DocumentInfo {
     failed: !!error,
     failMessage: error?.message ?? '',
     scanned: doc.page_count > 0 && looksScanned(docId),
+    outline: doc.page_count > 0 ? extractOutline(resolvePdf(doc.pdf_path)) : [],
   }
 }
 

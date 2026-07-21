@@ -26,6 +26,12 @@ export interface ExtractedPage {
   blocks: ExtractedBlock[]
 }
 
+export interface ExtractedOutlineItem {
+  title: string
+  page: number // 1-based
+  children: ExtractedOutlineItem[]
+}
+
 interface StLine {
   bbox: { x: number; y: number; w: number; h: number }
   wmode: number
@@ -128,6 +134,29 @@ export function extractMetadata(pdf: mupdf.PDFDocument): [string, string] {
   const result = titleFromLayout(page)
   page.destroy()
   return result
+}
+
+/** Read the PDF's embedded table of contents/bookmarks as page destinations. */
+export function extractOutline(pdfPath: string): ExtractedOutlineItem[] {
+  try {
+    const pdf = openPdf(readFileSync(pdfPath))
+    try {
+      const pageCount = pdf.countPages()
+      const mapItems = (items: ReturnType<mupdf.Document['loadOutline']>): ExtractedOutlineItem[] =>
+        (items ?? []).flatMap((item) => {
+          const children = mapItems(item.down ?? [])
+          const title = item.title?.trim() ?? ''
+          const page = typeof item.page === 'number' ? item.page + 1 : 0
+          if (!title || page < 1 || page > pageCount) return children
+          return [{ title, page, children }]
+        })
+      return mapItems(pdf.loadOutline())
+    } finally {
+      pdf.destroy()
+    }
+  } catch {
+    return []
+  }
 }
 
 /** Largest-font line cluster in the top half of page 1 is the title; the row below is authors. */

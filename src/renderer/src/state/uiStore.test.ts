@@ -65,6 +65,25 @@ describe('storedPdfTheme', () => {
   })
 })
 
+describe('document outline sidebar', () => {
+  it('opens the left sidebar when the document outline is enabled', () => {
+    const setItem = vi.fn()
+    vi.stubGlobal('window', { localStorage: { setItem } })
+    useUiStore.setState({ leftSidebarOpen: false, documentOutlineOpen: false })
+
+    useUiStore.getState().toggleDocumentOutline()
+
+    expect(useUiStore.getState().documentOutlineOpen).toBe(true)
+    expect(useUiStore.getState().leftSidebarOpen).toBe(true)
+    expect(setItem).toHaveBeenCalledWith('margin.leftSidebarOpen', 'true')
+
+    useUiStore.getState().toggleDocumentOutline()
+    expect(useUiStore.getState().documentOutlineOpen).toBe(false)
+    expect(useUiStore.getState().leftSidebarOpen).toBe(true)
+    vi.unstubAllGlobals()
+  })
+})
+
 describe('application zoom', () => {
   it('restores supported levels and falls back to 100%', () => {
     expect(storedAppZoom('125')).toBe(125)

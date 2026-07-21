@@ -13,6 +13,7 @@ const readyDocument: DocumentInfo = {
   failed: false,
   failMessage: '',
   scanned: false,
+  outline: [],
 }
 
 const thread: ChatThreadSummary = {
@@ -50,6 +51,26 @@ describe('reader navigation and zoom boundaries', () => {
     useReaderStore.setState({ zoom: ZOOM_LEVELS[ZOOM_LEVELS.length - 1] })
     useReaderStore.getState().zoomIn()
     expect(useReaderStore.getState().zoom).toBe(ZOOM_LEVELS[ZOOM_LEVELS.length - 1])
+  })
+
+  it('jumps to an outline page through the normal page loader', async () => {
+    const invoke = vi.fn().mockResolvedValue({ imageUrl: 'page-4.png', width: 612, height: 792, blocks: [] })
+    vi.stubGlobal('window', { margin: { invoke } })
+    useReaderStore.setState({
+      documentId: readyDocument.id,
+      doc: readyDocument,
+      currentPage: 1,
+      selectedBlockIds: [10],
+      selectionAnchorId: 10,
+    })
+
+    useReaderStore.getState().goToPage(4)
+    await Promise.resolve()
+
+    expect(useReaderStore.getState().currentPage).toBe(4)
+    expect(useReaderStore.getState().selectedBlockIds).toEqual([])
+    expect(invoke).toHaveBeenCalledWith('page:get', { docId: readyDocument.id, number: 4 })
+    expect(useReaderStore.getState().pageImage).toBe('page-4.png')
   })
 })
 

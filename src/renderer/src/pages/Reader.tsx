@@ -50,7 +50,7 @@ export default function Reader() {
   const location = useLocation()
   const navigate = useNavigate()
   const store = useReaderStore()
-  const { assistantOpen, pdfTheme, toggleAssistant, togglePdfTheme } = useUiStore()
+  const { assistantOpen, documentOutlineOpen, pdfTheme, toggleAssistant, toggleDocumentOutline, togglePdfTheme } = useUiStore()
   const handleRef = usePanelResize(CHAT_RESIZE)
 
   useLayoutEffect(() => {
@@ -105,6 +105,15 @@ export default function Reader() {
           <h1 title={store.doc?.title}>{store.doc?.title || 'Loading paper…'}</h1>
         </div>
         <div className="reader-header-actions">
+          <button
+            className={`route-icon-button ${documentOutlineOpen ? 'active' : ''}`}
+            onClick={toggleDocumentOutline}
+            title={documentOutlineOpen ? 'Show paper library' : 'Show document outline'}
+            aria-label={documentOutlineOpen ? 'Show paper library' : 'Show document outline'}
+            aria-pressed={documentOutlineOpen}
+          >
+            <Icon name="outline" />
+          </button>
           <button
             className={`route-icon-button ${pdfTheme === 'dark' ? 'active' : ''}`}
             onClick={togglePdfTheme}

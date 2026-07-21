@@ -72,6 +72,7 @@ function write(key: string, value: string): void {
 interface UiStore {
   leftSidebarOpen: boolean
   assistantOpen: boolean
+  documentOutlineOpen: boolean
   theme: ThemeMode
   pdfTheme: PdfTheme
   appZoom: number
@@ -79,6 +80,8 @@ interface UiStore {
   windowState: AppWindowState | null
   toggleLeftSidebar: () => void
   toggleAssistant: () => void
+  toggleDocumentOutline: () => void
+  setDocumentOutlineOpen: (open: boolean) => void
   setAssistantOpen: (open: boolean) => void
   toggleTheme: () => void
   togglePdfTheme: () => void
@@ -93,6 +96,7 @@ interface UiStore {
 export const useUiStore = create<UiStore>((set, get) => ({
   leftSidebarOpen: storedBoolean(read('margin.leftSidebarOpen'), true),
   assistantOpen: storedBoolean(read('margin.assistantOpen'), true),
+  documentOutlineOpen: false,
   theme: read('margin.theme') === 'light' ? 'light' : 'dark',
   pdfTheme: storedPdfTheme(read('margin.pdfTheme')),
   appZoom: storedAppZoom(read('margin.appZoom')),
@@ -109,6 +113,12 @@ export const useUiStore = create<UiStore>((set, get) => ({
     write('margin.assistantOpen', String(assistantOpen))
     set({ assistantOpen })
   },
+  toggleDocumentOutline: () => {
+    const documentOutlineOpen = !get().documentOutlineOpen
+    if (documentOutlineOpen) write('margin.leftSidebarOpen', 'true')
+    set({ documentOutlineOpen, leftSidebarOpen: documentOutlineOpen ? true : get().leftSidebarOpen })
+  },
+  setDocumentOutlineOpen: (documentOutlineOpen) => set({ documentOutlineOpen }),
   setAssistantOpen: (assistantOpen) => {
     write('margin.assistantOpen', String(assistantOpen))
     set({ assistantOpen })

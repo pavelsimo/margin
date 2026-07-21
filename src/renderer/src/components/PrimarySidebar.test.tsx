@@ -1,10 +1,16 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ChatThreadSummary, PaperRow } from '@shared/ipc'
+import type { ChatThreadSummary, DocumentInfo, PaperRow } from '@shared/ipc'
 import PrimarySidebar from './PrimarySidebar'
 
-const { mockStore } = vi.hoisted(() => ({
+const { mockReaderState, mockStore, mockUiState } = vi.hoisted(() => ({
+  mockReaderState: {
+    currentPage: 1,
+    doc: null as DocumentInfo | null,
+    goToPage: vi.fn(),
+    startNewChat: vi.fn(),
+  },
   mockStore: {
     allPapers: [] as PaperRow[],
     chatThreads: [] as ChatThreadSummary[],
@@ -12,9 +18,20 @@ const { mockStore } = vi.hoisted(() => ({
     openPaper: vi.fn().mockResolvedValue(undefined),
     requestAddFocus: vi.fn(),
   },
+  mockUiState: { documentOutlineOpen: false },
 }))
 
 vi.mock('../state/libraryStore', () => ({ useLibraryStore: () => mockStore }))
+vi.mock('../state/readerStore', () => ({
+  useReaderStore: Object.assign(
+    (selector: (state: typeof mockReaderState) => unknown) => selector(mockReaderState),
+    { getState: () => mockReaderState },
+  ),
+}))
+vi.mock('../state/uiStore', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../state/uiStore')>(),
+  useUiStore: (selector: (state: typeof mockUiState) => unknown) => selector(mockUiState),
+}))
 
 const paper: PaperRow = {
   id: 7,
@@ -43,6 +60,9 @@ describe('PrimarySidebar chat groups', () => {
     mockStore.allPapers = []
     mockStore.chatThreads = []
     mockStore.loaded = false
+    mockUiState.documentOutlineOpen = false
+    mockReaderState.doc = null
+    mockReaderState.currentPage = 1
   })
 
   it('renders a paper group, a new-chat action, five chats, and Show more', () => {
@@ -61,5 +81,40 @@ describe('PrimarySidebar chat groups', () => {
     expect(html).toContain('Show more')
     expect(html).toContain('sidebar-chat active')
     expect(html).not.toContain('Paper chat 6')
+  })
+
+  it('replaces the paper list with a nested document outline', () => {
+    mockStore.allPapers = [paper]
+    mockStore.loaded = true
+    mockUiState.documentOutlineOpen = true
+    mockReaderState.currentPage = 3
+    mockReaderState.doc = {
+      id: paper.id,
+      title: paper.title,
+      authors: '',
+      pageCount: 15,
+      ready: true,
+      failed: false,
+      failMessage: '',
+      scanned: false,
+      outline: [
+        { title: 'Introduction', page: 1, children: [] },
+        { title: 'Architecture', page: 3, children: [{ title: 'Attention', page: 4, children: [] }] },
+      ],
+    }
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={['/read/7/chat/1']}>
+        <PrimarySidebar />
+      </MemoryRouter>,
+    )
+
+    expect(html).toContain('Document outline')
+    expect(html).toContain('Back to library')
+    expect(html).toContain('Introduction')
+    expect(html).toContain('Architecture')
+    expect(html).toContain('Attention')
+    expect(html).toContain('aria-current="page"')
+    expect(html).not.toContain('Find a paper…')
   })
 })

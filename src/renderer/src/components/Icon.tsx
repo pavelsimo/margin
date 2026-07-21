@@ -21,6 +21,7 @@ type IconName =
   | 'moon'
   | 'sun'
   | 'copy'
+  | 'outline'
 
 export default function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) {
   let body
@@ -84,6 +85,9 @@ export default function Icon({ name, ...props }: { name: IconName } & SVGProps<S
       break
     case 'copy':
       body = <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>
+      break
+    case 'outline':
+      body = <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" /><path d="M4.5 7v4" /><circle cx="4.5" cy="12" r="1" /><path d="M4.5 13v5H7" /></>
       break
   }
   return (
