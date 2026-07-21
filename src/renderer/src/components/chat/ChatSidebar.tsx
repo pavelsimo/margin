@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import Icon from '../Icon'
 import {
   CHIP_PREVIEW_CHARS,
   PROVIDER_LABELS,
@@ -15,7 +16,80 @@ function AiAvatar() {
   return <span className="ai-avatar">✦</span>
 }
 
-function MessageRow({ m }: { m: DisplayMessage }) {
+export function formatMessageTime(
+  value: string,
+  locales?: Intl.LocalesArgument,
+  timeZone?: string,
+): string {
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(value)
+    ? `${value.replace(' ', 'T').replace(/(\.\d{3})\d+$/, '$1')}Z`
+    : value
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat(locales, {
+    hour: 'numeric',
+    minute: '2-digit',
+    ...(timeZone ? { timeZone } : {}),
+  }).format(date)
+}
+
+export async function copyAnswer(
+  text: string,
+  clipboard: Pick<Clipboard, 'writeText'> = navigator.clipboard,
+): Promise<boolean> {
+  try {
+    await clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function AssistantMessage({ m }: { m: DisplayMessage }) {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const completed = !m.requestId && Boolean(m.createdAt)
+  const time = m.createdAt ? formatMessageTime(m.createdAt) : ''
+  const copyLabel = copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy answer'
+
+  useEffect(() => () => {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
+  }, [])
+
+  const onCopy = async () => {
+    const copied = await copyAnswer(m.rawContent ?? m.content)
+    setCopyState(copied ? 'copied' : 'failed')
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
+    resetTimerRef.current = setTimeout(() => setCopyState('idle'), 1600)
+  }
+
+  return (
+    <div className="msg-ai">
+      <AiAvatar />
+      <div className="msg-ai-body">
+        {m.isError ? (
+          <span className="msg-error">{m.content}</span>
+        ) : (
+          <div className="chat-md">
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+              {m.content}
+            </ReactMarkdown>
+          </div>
+        )}
+        {completed && time && (
+          <div className="msg-answer-footer">
+            <button type="button" className="msg-copy" onClick={() => void onCopy()} aria-label={copyLabel} title={copyLabel}>
+              {copyState === 'copied' ? <Icon name="check" /> : <Icon name="copy" />}
+            </button>
+            <time dateTime={m.createdAt}>{time}</time>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function MessageRow({ m }: { m: DisplayMessage }) {
   if (m.role === 'user') {
     return (
       <div className="msg-user">
@@ -25,20 +99,7 @@ function MessageRow({ m }: { m: DisplayMessage }) {
     )
   }
   if (!m.content) return null
-  return (
-    <div className="msg-ai">
-      <AiAvatar />
-      {m.isError ? (
-        <span className="msg-error">{m.content}</span>
-      ) : (
-        <div className="chat-md">
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-            {m.content}
-          </ReactMarkdown>
-        </div>
-      )}
-    </div>
-  )
+  return <AssistantMessage m={m} />
 }
 
 function TypingIndicator() {

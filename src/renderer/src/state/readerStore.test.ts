@@ -91,6 +91,7 @@ describe('reader chat history invalidation', () => {
         contextText: '',
         mode: 'ask',
         isError: false,
+        createdAt: '2026-01-01 00:01:00.000000',
       },
     })
     await Promise.resolve()
@@ -137,7 +138,15 @@ describe('reader chat history invalidation', () => {
     resolveReply({
       status: 'completed',
       thread: { ...thread, documentId: 7 },
-      message: { id: 3, role: 'assistant', content: 'hello world', contextText: '', mode: 'ask', isError: false },
+      message: {
+        id: 3,
+        role: 'assistant',
+        content: 'hello world',
+        contextText: '',
+        mode: 'ask',
+        isError: false,
+        createdAt: '2026-01-01 00:01:00.000000',
+      },
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -146,6 +155,8 @@ describe('reader chat history invalidation', () => {
     expect(useReaderStore.getState().activeRequestId).toBe('')
     expect(useReaderStore.getState().messages).toHaveLength(2)
     expect(useReaderStore.getState().messages.at(-1)?.content).toBe('hello world')
+    expect(useReaderStore.getState().messages.at(-1)?.rawContent).toBe('hello world')
+    expect(useReaderStore.getState().messages.at(-1)?.createdAt).toBe('2026-01-01 00:01:00.000000')
   })
 
   it('removes an empty assistant draft when a request is stopped before any text arrives', async () => {
@@ -259,6 +270,38 @@ describe('reader thread loading', () => {
 
     expect(useReaderStore.getState().documentId).toBe(2)
     expect(useReaderStore.getState().doc?.title).toBe('Second paper')
+  })
+
+  it('preserves source content and timestamps when loading persisted history', async () => {
+    const historyMessage = {
+      id: 11,
+      role: 'assistant' as const,
+      content: 'Use \\(x\\) in **Markdown**.',
+      contextText: '',
+      mode: 'ask',
+      isError: false,
+      createdAt: '2026-01-01 12:34:00.000000',
+    }
+    const invoke = vi.fn((channel: string) => {
+      if (channel === 'document:get') return Promise.resolve(readyDocument)
+      if (channel === 'chat:list') return Promise.resolve([thread])
+      if (channel === 'chat:history') return Promise.resolve([historyMessage])
+      if (channel === 'ai:getChoice') return Promise.resolve({ provider: 'claude', model: '', effort: '' })
+      if (channel === 'ai:getProviders') return Promise.resolve([])
+      if (channel === 'page:get') return Promise.resolve({ imageUrl: '', width: 0, height: 0, blocks: [] })
+      return Promise.resolve(undefined)
+    })
+    vi.stubGlobal('window', { margin: { invoke } })
+    useReaderStore.setState({ activeRequestId: '', documentId: 0, doc: null, messages: [] })
+
+    await useReaderStore.getState().loadReader(readyDocument.id, thread.id)
+
+    expect(useReaderStore.getState().messages).toMatchObject([{
+      role: 'assistant',
+      content: 'Use $x$ in **Markdown**.',
+      rawContent: historyMessage.content,
+      createdAt: historyMessage.createdAt,
+    }])
   })
 })
 

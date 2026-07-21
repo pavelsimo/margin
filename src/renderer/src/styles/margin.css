@@ -811,6 +811,62 @@ body.reader-region-selecting {
   max-width: 100%;
 }
 
+.msg-ai-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.msg-answer-footer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  margin-top: 3px;
+  color: var(--m-muted);
+  font-size: 11.5px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.msg-ai:hover .msg-answer-footer,
+.msg-ai:focus-within .msg-answer-footer {
+  opacity: 1;
+}
+
+.msg-copy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 3px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--m-muted);
+  cursor: pointer;
+}
+
+.msg-copy:hover,
+.msg-copy:focus-visible {
+  background: var(--m-raise);
+  color: var(--m-ink2);
+  outline: none;
+}
+
+.msg-copy:focus-visible {
+  box-shadow: 0 0 0 2px var(--m-focus-ring);
+}
+
+.msg-copy svg {
+  width: 17px;
+  height: 17px;
+}
+
+.msg-answer-footer time {
+  white-space: nowrap;
+}
+
 .msg-ai .msg-error {
   font-size: 13.5px;
   line-height: 1.6;

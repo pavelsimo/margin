@@ -34,6 +34,7 @@ function uiMessage(m: ChatMessageRow): UiMessage {
     contextText: m.context_text,
     mode: m.mode,
     isError: m.mode === 'error',
+    createdAt: m.created_at,
   }
 }
 

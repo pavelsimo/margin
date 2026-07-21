@@ -38,10 +38,11 @@ export interface PageData {
 export interface UiMessage {
   id: number
   role: 'user' | 'assistant'
-  content: string // math-normalized for assistant rows
+  content: string // persisted source content; assistant math is normalized in the renderer
   contextText: string
   mode: string
   isError: boolean
+  createdAt: string
 }
 
 export interface ChatThreadSummary {

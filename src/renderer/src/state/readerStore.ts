@@ -40,6 +40,7 @@ export interface DisplayMessage {
   isError: boolean
   requestId?: string
   rawContent?: string
+  createdAt?: string
 }
 
 let messageKey = 0
@@ -51,6 +52,8 @@ function displayRow(message: UiMessage, key?: number): DisplayMessage {
     content: message.role === 'user' ? message.content : normalizeMath(message.content),
     ctx: message.contextText.trim(),
     isError: message.isError,
+    rawContent: message.content,
+    createdAt: message.createdAt,
   }
 }
 
