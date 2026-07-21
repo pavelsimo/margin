@@ -15,11 +15,9 @@
 - **Bring your own AI.** Works with any OpenAI-compatible API, or with your favorite coding agent like Codex, Claude Code, and Antigravity. You pick the model and provider. No lock-in.
 - **Local-first and private.** Your chats, PDFs, and app data stay on your machine. No tracking, no subscription, no account to create. Remote AI providers only receive the content needed for your request, per their privacy policy.
 
-![Home screen showing a searchable grid of papers with first-page previews](docs/screenshots/home.png)
-*Library: first-page previews of your papers; add them from a link or file, then search by title or topic.*
+![Demo: adding an arXiv paper, ELI12 on the abstract, and asking about a selected formula](docs/promo.gif)
 
-![Reader view with a paper open, selectable blocks, and the AI assistant panel](docs/screenshots/reader.png)
-*Reader: select text, tables, figures, or a page region and ask the assistant to explain or summarize it.*
+*Add a paper from an arXiv link, ELI12 any passage, or select a formula and just ask.*
 
 ## Shortcuts
 
