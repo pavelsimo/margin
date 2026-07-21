@@ -1,6 +1,6 @@
 {
   "name": "margin-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Margin: AI paper reader, desktop edition",
   "desktopName": "margin",
   "main": "out/main/index.js",
