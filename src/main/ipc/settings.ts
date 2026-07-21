@@ -65,7 +65,7 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:refreshOpenAiModels', async (_event, id: OpenAiCompatibleProviderId) => {
     assertOpenAiProviderId(id)
     const profile = executables.openAiProfile(id)
-    if (!profile) throw new Error('That API profile no longer exists.')
+    if (!profile) throw new Error('That API provider no longer exists.')
     const models = await discoverModels({
       id,
       name: profile.name,
@@ -77,7 +77,7 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:deleteOpenAiProvider', (_event, id: OpenAiCompatibleProviderId) => {
     assertOpenAiProviderId(id)
     const choice = chat.aiChoice()
-    if (!executables.deleteOpenAiProfile(id)) throw new Error('That API profile no longer exists.')
+    if (!executables.deleteOpenAiProfile(id)) throw new Error('That API provider no longer exists.')
     if (choice.provider === id) return chat.setAiChoice(chat.fallbackAiChoice(id))
     return chat.aiChoice()
   })
@@ -88,11 +88,11 @@ function assertProvider(provider: string): asserts provider is Provider {
 }
 
 function assertOpenAiProviderId(id: string): asserts id is OpenAiCompatibleProviderId {
-  if (!isOpenAiCompatibleProvider(id)) throw new Error('Unknown OpenAI-compatible API profile.')
+  if (!isOpenAiCompatibleProvider(id)) throw new Error('Unknown API provider.')
 }
 
 async function discoverModels(draft: OpenAiCompatibleProfileDraft): Promise<string[]> {
-  const name = draft.name.trim() || 'OpenAI-compatible API'
+  const name = draft.name.trim() || 'Custom provider'
   const baseUrl = normalizeOpenAiBaseUrl(draft.baseUrl)
   const apiKey = await executables.draftApiKey(draft)
   const controller = new AbortController()

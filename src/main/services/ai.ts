@@ -48,7 +48,7 @@ export interface RunOpts {
 export async function runPrompt(provider: AiProviderId, prompt: string, opts: RunOpts = {}): Promise<AIResult> {
   if (isOpenAiCompatibleProvider(provider)) {
     const profile = openAiProfile(provider)
-    if (!profile) return { ok: false, text: '', error: 'That OpenAI-compatible API profile no longer exists.' }
+    if (!profile) return { ok: false, text: '', error: 'That API provider no longer exists.' }
     const model = opts.model?.trim() || profile.defaultModel
     if (!model) return { ok: false, text: '', error: `${profile.name} needs a model before it can answer.` }
     let apiKey: string

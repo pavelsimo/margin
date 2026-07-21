@@ -23,6 +23,25 @@ export function SettingsGroup({ title, description, action, children }: Settings
   )
 }
 
+interface SettingsSubheadingProps {
+  title: string
+  description?: ReactNode
+  action?: ReactNode
+}
+
+/** A labeled subdivision within one settings card. */
+export function SettingsSubheading({ title, description, action }: SettingsSubheadingProps) {
+  return (
+    <div className="settings-subsection-heading">
+      <div className="settings-subsection-text">
+        <span className="settings-subsection-title">{title}</span>
+        {description && <span className="settings-subsection-desc">{description}</span>}
+      </div>
+      {action && <div className="settings-subsection-action">{action}</div>}
+    </div>
+  )
+}
+
 interface SettingsRowProps {
   title: ReactNode
   description?: ReactNode

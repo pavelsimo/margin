@@ -313,6 +313,6 @@ function assertAiChoice(choice: AiChoice): void {
   if (!isOpenAiCompatibleProvider(provider) || !openAiProfile(provider)) {
     throw new Error(`unknown provider: ${provider}`)
   }
-  if (!model.trim()) throw new Error('Choose a model for this OpenAI-compatible API.')
-  if (effort) throw new Error('Reasoning effort is not configurable for OpenAI-compatible APIs.')
+  if (!model.trim()) throw new Error('Choose a model for this API provider.')
+  if (effort) throw new Error('Reasoning effort is not configurable for API providers.')
 }

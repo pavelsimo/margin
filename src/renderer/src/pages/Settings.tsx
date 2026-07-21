@@ -1,40 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MODE_LABELS, MODES, PROVIDER_ENV_VARS, PROVIDER_LABELS, PROVIDERS, type Mode, type Provider } from '@shared/constants'
+import { MODE_LABELS, MODES, PROVIDER_LABELS, PROVIDERS, type Mode, type Provider } from '@shared/constants'
 import type {
   AiChoice,
   AiProviderInfo,
-  CliExecutableInfo,
   CliExecutableSettings,
   OpenAiCompatibleProfile,
   OpenAiCompatibleProfileDraft,
   PromptInfo,
 } from '@shared/ipc'
-import { SettingsGroup, SettingsRow } from '../components/settings/SettingsGroup'
+import { SettingsGroup, SettingsRow, SettingsSubheading } from '../components/settings/SettingsGroup'
+import {
+  API_PROVIDER_PRESETS,
+  apiProviderPreset,
+  cliDetectionStatus,
+  cliExecutableDescription,
+  createApiProviderDraft,
+  type ApiProviderPresetId,
+} from '../lib/aiProviderSettings'
 import { cleanIpcError, useLibraryStore } from '../state/libraryStore'
 import { useReaderStore } from '../state/readerStore'
 
 const EMPTY_EXECUTABLE_DRAFTS: Record<Provider, string> = { claude: '', codex: '', antigravity: '' }
-const EMPTY_API_DRAFT: OpenAiCompatibleProfileDraft = {
-  name: '',
-  baseUrl: '',
-  defaultModel: '',
-  apiKey: '',
-  models: [],
-}
-
-function executableDescription(provider: Provider, info: CliExecutableInfo): string {
-  if (info.source === 'custom') return `Using custom executable: ${info.effectiveCommand}`
-  if (info.source === 'environment') {
-    return `Using ${PROVIDER_ENV_VARS[provider]}: ${info.effectiveCommand}`
-  }
-  return `Using “${info.effectiveCommand}” from the system PATH.`
-}
-
-function detectionStatus(info: CliExecutableInfo): string {
-  if (info.detected) return `Detected at ${info.resolvedPath}`
-  if (info.source === 'path') return `“${info.effectiveCommand}” was not found on the system PATH.`
-  return `Executable not found at ${info.effectiveCommand}`
-}
 
 export default function Settings() {
   const [executables, setExecutables] = useState<CliExecutableSettings | null>(null)
@@ -45,6 +31,8 @@ export default function Settings() {
   const [expandedExecutable, setExpandedExecutable] = useState<Provider | ''>('')
   const [apiProfiles, setApiProfiles] = useState<OpenAiCompatibleProfile[] | null>(null)
   const [apiDraft, setApiDraft] = useState<OpenAiCompatibleProfileDraft | null>(null)
+  const [apiAddOpen, setApiAddOpen] = useState(false)
+  const [apiPresetId, setApiPresetId] = useState<ApiProviderPresetId | null>(null)
   const [apiBusy, setApiBusy] = useState(false)
   const [apiError, setApiError] = useState('')
   const [apiStatus, setApiStatus] = useState('')
@@ -122,12 +110,38 @@ export default function Settings() {
   }
 
   const beginAddApi = () => {
-    setApiDraft({ ...EMPTY_API_DRAFT, models: [] })
+    setApiAddOpen(true)
+    setApiPresetId(null)
+    setApiDraft(null)
+    setApiError('')
+    setApiStatus('')
+  }
+
+  const chooseApiPreset = (presetId: ApiProviderPresetId) => {
+    setApiPresetId(presetId)
+    setApiDraft(createApiProviderDraft(presetId))
+    setApiError('')
+    setApiStatus('')
+  }
+
+  const backToApiPresets = () => {
+    setApiPresetId(null)
+    setApiDraft(null)
+    setApiError('')
+    setApiStatus('')
+  }
+
+  const closeApiEditor = () => {
+    setApiAddOpen(false)
+    setApiPresetId(null)
+    setApiDraft(null)
     setApiError('')
     setApiStatus('')
   }
 
   const beginEditApi = (profile: OpenAiCompatibleProfile) => {
+    setApiAddOpen(false)
+    setApiPresetId(null)
     setApiDraft({
       id: profile.id,
       name: profile.name,
@@ -171,7 +185,7 @@ export default function Settings() {
         else next[index] = saved
         return next
       })
-      setApiDraft(null)
+      closeApiEditor()
       void window.margin.invoke('ai:getProviders').then(setAiProviders)
     } catch (error) {
       setApiError(cleanIpcError(error))
@@ -323,17 +337,30 @@ export default function Settings() {
   const editingApiProfile = apiDraft?.id
     ? apiProfiles?.find((profile) => profile.id === apiDraft.id)
     : undefined
+  const selectedApiPreset = apiPresetId ? apiProviderPreset(apiPresetId) : null
   const weakCredentialStorage = apiProfiles?.some((profile) => profile.credentialProtection === 'basic')
+  const apiEditorTitle = apiDraft?.id
+    ? `Edit ${editingApiProfile?.name ?? 'provider'}`
+    : selectedApiPreset?.id === 'custom'
+      ? 'Connect a custom provider'
+      : `Connect ${selectedApiPreset?.label ?? 'provider'}`
 
   const apiEditor = apiDraft && (
     <>
-      <span className="executable-label">{apiDraft.id ? 'Edit API profile' : 'Add API profile'}</span>
+      <div className="settings-editor-heading">
+        {apiAddOpen && (
+          <button className="btn-ghost" type="button" disabled={apiBusy} onClick={backToApiPresets}>
+            ← Back
+          </button>
+        )}
+        <span className="executable-label">{apiEditorTitle}</span>
+      </div>
       <label className="settings-field">
-        <span>Name</span>
+        <span>Provider name</span>
         <input
           className="text-input"
           value={apiDraft.name}
-          placeholder="e.g. OpenRouter"
+          placeholder="e.g. My provider"
           maxLength={64}
           onChange={(event) => setApiDraft({ ...apiDraft, name: event.target.value })}
         />
@@ -399,11 +426,36 @@ export default function Settings() {
           disabled={apiBusy || !apiDraft.name.trim() || !apiDraft.baseUrl.trim() || !apiDraft.defaultModel.trim()}
           onClick={() => void saveApiProfile()}
         >
-          Save
+          {apiDraft.id ? 'Save changes' : 'Add provider'}
         </button>
-        <button className="btn-ghost" type="button" disabled={apiBusy} onClick={() => setApiDraft(null)}>
+        <button className="btn-ghost" type="button" disabled={apiBusy} onClick={closeApiEditor}>
           Cancel
         </button>
+      </div>
+    </>
+  )
+
+  const apiPresetChooser = apiAddOpen && !apiDraft && (
+    <>
+      <div className="settings-editor-heading">
+        <span className="executable-label">Choose an API provider</span>
+        <button className="btn-ghost" type="button" onClick={closeApiEditor}>Cancel</button>
+      </div>
+      <span className="settings-field-help">
+        Select a provider to prefill its connection details, or use a custom OpenAI-compatible endpoint.
+      </span>
+      <div className="api-provider-options">
+        {API_PROVIDER_PRESETS.map((preset) => (
+          <button
+            className="api-provider-option"
+            type="button"
+            key={preset.id}
+            onClick={() => chooseApiPreset(preset.id)}
+          >
+            <span className="api-provider-option-title">{preset.label}</span>
+            <span className="api-provider-option-desc">{preset.description}</span>
+          </button>
+        ))}
       </div>
     </>
   )
@@ -415,44 +467,106 @@ export default function Settings() {
       </header>
       <div className="route-scroll settings-scroll">
         <div className="settings-content">
-          <SettingsGroup title="Models">
-            <SettingsRow
-              title="Default model"
-              description="Model used for background tasks like chat titles and paper topics. Chats always use the model picked in the chat sidebar."
-              control={
-                <select
-                  className="settings-select"
-                  aria-label="Default model for background tasks"
-                  value={backgroundValue}
-                  disabled={!aiProviders}
-                  onChange={(event) => void changeBackgroundChoice(event.target.value)}
-                >
-                  <option value="">Auto (use chat selection)</option>
-                  {backgroundUnavailable && (
-                    <option value="unavailable" disabled>{unavailableBackgroundLabel()}</option>
-                  )}
-                  {backgroundModelGroups.map((group) => (
-                    <optgroup key={group.id} label={group.label}>
-                      {group.options.map((option) => (
-                        <option key={`${group.id} ${option.model}`} value={String(option.index)}>
-                          {option.model || 'CLI default'}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              }
-            >
-              {backgroundError && <span className="executable-error" role="alert">{backgroundError}</span>}
-            </SettingsRow>
-          </SettingsGroup>
           <SettingsGroup
-            title="OpenAI-compatible APIs"
-            description="Connect any OpenAI-compatible API: Ollama, LM Studio, vLLM, OpenRouter, or OpenAI itself. Profiles are available to chats and automatic paper tagging."
-            action={!apiDraft
-              ? <button className="btn" type="button" onClick={beginAddApi}>Add API</button>
-              : undefined}
+            title="AI providers"
+            description="Connect Margin to the AI services and tools you already use."
           >
+            <SettingsSubheading
+              title="CLI tools"
+              description="Margin looks for supported CLIs on your system. Detected tools are added to the model picker automatically and use the CLI’s existing sign-in. Configure a path only when detection misses an installation."
+            />
+            {executables && PROVIDERS.map((provider) => {
+              const info = executables[provider]
+              const busy = busyExecutable === provider
+              const expanded = expandedExecutable === provider
+              return (
+                <SettingsRow
+                  key={provider}
+                  title={`${PROVIDER_LABELS[provider]} CLI`}
+                  description={
+                    <span
+                      className={`mono executable-status${info.detected ? ' detected' : ''}`}
+                      title={info.detected ? info.resolvedPath : info.effectiveCommand}
+                    >
+                      {cliDetectionStatus(provider, info)}
+                    </span>
+                  }
+                  control={
+                    <>
+                      {savedExecutable === provider && <span className="settings-saved mono">saved ✓</span>}
+                      <button
+                        className="btn-ghost"
+                        type="button"
+                        onClick={() => setExpandedExecutable(expanded ? '' : provider)}
+                      >
+                        {expanded ? 'Close' : 'Configure'}
+                      </button>
+                    </>
+                  }
+                >
+                  {expanded && (
+                    <>
+                      <div className="executable-input-row">
+                        <input
+                          className="text-input mono executable-input"
+                          value={executableDrafts[provider]}
+                          placeholder="Use automatic detection"
+                          spellCheck={false}
+                          onChange={(event) => {
+                            setExecutableDrafts((drafts) => ({ ...drafts, [provider]: event.target.value }))
+                            setExecutableErrors((errors) => ({ ...errors, [provider]: '' }))
+                            setSavedExecutable('')
+                          }}
+                        />
+                        <button
+                          className="btn btn-soft"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void chooseExecutablePath(provider)}
+                        >
+                          Browse…
+                        </button>
+                      </div>
+                      <span className="executable-source mono" title={info.effectiveCommand}>
+                        {cliExecutableDescription(provider, info)}
+                      </span>
+                      {executableErrors[provider] && (
+                        <span className="executable-error" role="alert">{executableErrors[provider]}</span>
+                      )}
+                      <div className="executable-actions">
+                        <button
+                          className="btn"
+                          type="button"
+                          disabled={busy || !executableDrafts[provider].trim()}
+                          onClick={() => void saveExecutablePath(provider)}
+                        >
+                          Save
+                        </button>
+                        {info.customPath && (
+                          <button
+                            className="btn-ghost"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void resetExecutablePath(provider)}
+                          >
+                            Use automatic detection
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </SettingsRow>
+              )
+            })}
+            <SettingsSubheading
+              title="API providers"
+              description="Connect a cloud provider or local model server through an OpenAI-compatible API. Connected models are available in chats and for background tasks."
+              action={!apiDraft && !apiAddOpen
+                ? <button className="btn" type="button" onClick={beginAddApi}>Add provider</button>
+                : undefined}
+            />
+            {apiPresetChooser && <div className="settings-row-detail">{apiPresetChooser}</div>}
+            {apiDraft && !apiDraft.id && <div className="settings-row-detail">{apiEditor}</div>}
             {weakCredentialStorage && (
               <div className="settings-card-note">
                 <span className="credential-warning" role="status">
@@ -478,7 +592,7 @@ export default function Settings() {
                       Edit
                     </button>
                     <button className="btn-ghost danger-link" type="button" disabled={apiBusy} onClick={() => setDeleteApiProfile(profile)}>
-                      Delete
+                      Remove
                     </button>
                   </>
                 }
@@ -486,108 +600,50 @@ export default function Settings() {
                 {apiDraft?.id === profile.id && apiEditor}
               </SettingsRow>
             ))}
-            {apiProfiles?.length === 0 && !apiDraft && (
+            {apiProfiles?.length === 0 && !apiDraft && !apiAddOpen && (
               <div className="settings-card-note">
                 <span className="settings-empty">
-                  No API profiles yet. Any OpenAI-compatible endpoint works, for example http://localhost:11434/v1 for local Ollama.
+                  No API providers connected. Add a cloud provider or local model server to use its models in Margin.
                 </span>
               </div>
             )}
-            {apiDraft && !apiDraft.id && <div className="settings-row-detail">{apiEditor}</div>}
-            {!apiDraft && apiError && (
+            {!apiDraft && !apiAddOpen && apiError && (
               <div className="settings-card-note"><span className="executable-error" role="alert">{apiError}</span></div>
             )}
-            {!apiDraft && apiStatus && (
+            {!apiDraft && !apiAddOpen && apiStatus && (
               <div className="settings-card-note"><span className="settings-success" role="status">{apiStatus}</span></div>
             )}
           </SettingsGroup>
-          <SettingsGroup
-            title="AI command-line tools"
-            description="Choose an executable when a CLI is not available on the system PATH. Changes apply to new chats and automatic paper tagging immediately."
-          >
-            {executables && PROVIDERS.map((provider) => {
-              const info = executables[provider]
-              const busy = busyExecutable === provider
-              const expanded = expandedExecutable === provider
-              return (
-                <SettingsRow
-                  key={provider}
-                  title={`${PROVIDER_LABELS[provider]} CLI`}
-                  description={
-                    <span
-                      className={`mono executable-status${info.detected ? ' detected' : ''}`}
-                      title={info.detected ? info.resolvedPath : info.effectiveCommand}
-                    >
-                      {detectionStatus(info)}
-                    </span>
-                  }
-                  control={
-                    <>
-                      {savedExecutable === provider && <span className="settings-saved mono">saved ✓</span>}
-                      <button
-                        className="btn-ghost"
-                        type="button"
-                        onClick={() => setExpandedExecutable(expanded ? '' : provider)}
-                      >
-                        {expanded ? 'Collapse' : 'Configure'}
-                      </button>
-                    </>
-                  }
+          <SettingsGroup title="Models">
+            <SettingsRow
+              title="Default model"
+              description="Model used for background tasks like chat titles and paper topics. Chats always use the model picked in the chat sidebar."
+              control={
+                <select
+                  className="settings-select"
+                  aria-label="Default model for background tasks"
+                  value={backgroundValue}
+                  disabled={!aiProviders}
+                  onChange={(event) => void changeBackgroundChoice(event.target.value)}
                 >
-                  {expanded && (
-                    <>
-                      <div className="executable-input-row">
-                        <input
-                          className="text-input mono executable-input"
-                          value={executableDrafts[provider]}
-                          placeholder={`Automatic (${provider})`}
-                          spellCheck={false}
-                          onChange={(event) => {
-                            setExecutableDrafts((drafts) => ({ ...drafts, [provider]: event.target.value }))
-                            setExecutableErrors((errors) => ({ ...errors, [provider]: '' }))
-                            setSavedExecutable('')
-                          }}
-                        />
-                        <button
-                          className="btn btn-soft"
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void chooseExecutablePath(provider)}
-                        >
-                          Browse…
-                        </button>
-                      </div>
-                      <span className="executable-source mono" title={info.effectiveCommand}>
-                        {executableDescription(provider, info)}
-                      </span>
-                      {executableErrors[provider] && (
-                        <span className="executable-error" role="alert">{executableErrors[provider]}</span>
-                      )}
-                      <div className="executable-actions">
-                        <button
-                          className="btn"
-                          type="button"
-                          disabled={busy || !executableDrafts[provider].trim()}
-                          onClick={() => void saveExecutablePath(provider)}
-                        >
-                          Save
-                        </button>
-                        {info.customPath && (
-                          <button
-                            className="btn-ghost"
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void resetExecutablePath(provider)}
-                          >
-                            Use automatic default
-                          </button>
-                        )}
-                      </div>
-                    </>
+                  <option value="">Auto (use chat selection)</option>
+                  {backgroundUnavailable && (
+                    <option value="unavailable" disabled>{unavailableBackgroundLabel()}</option>
                   )}
-                </SettingsRow>
-              )
-            })}
+                  {backgroundModelGroups.map((group) => (
+                    <optgroup key={group.id} label={group.label}>
+                      {group.options.map((option) => (
+                        <option key={`${group.id}:${option.model}`} value={String(option.index)}>
+                          {option.model || 'CLI default'}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              }
+            >
+              {backgroundError && <span className="executable-error" role="alert">{backgroundError}</span>}
+            </SettingsRow>
           </SettingsGroup>
           <SettingsGroup
             title="Prompts"
@@ -686,16 +742,16 @@ export default function Settings() {
             aria-describedby="delete-api-description"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2 id="delete-api-title">Delete {deleteApiProfile.name}?</h2>
+            <h2 id="delete-api-title">Remove {deleteApiProfile.name}?</h2>
             <p className="dialog-copy" id="delete-api-description">
-              This removes the endpoint, cached model list, and saved API key. Your chat history is unchanged.
+              This removes the provider connection, cached model list, and saved API key. Your chat history is unchanged.
             </p>
             <div className="dialog-actions">
               <button className="btn btn-soft" type="button" disabled={apiBusy} onClick={() => setDeleteApiProfile(null)}>
                 Cancel
               </button>
               <button className="btn btn-danger" type="button" disabled={apiBusy} onClick={() => void confirmDeleteApiProfile()}>
-                {apiBusy ? 'Deleting…' : 'Delete API'}
+                {apiBusy ? 'Removing…' : 'Remove provider'}
               </button>
             </div>
           </div>

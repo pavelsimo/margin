@@ -242,14 +242,14 @@ export class ExecutableSettingsStore {
 
   async upsertOpenAiProfile(draft: OpenAiCompatibleProfileDraft): Promise<OpenAiCompatibleProfile> {
     const current = draft.id ? this.storedOpenAiProfile(draft.id) : undefined
-    if (draft.id && !current) throw new Error('That API profile no longer exists.')
+    if (draft.id && !current) throw new Error('That API provider no longer exists.')
     const id = current?.id ?? `${OPENAI_COMPATIBLE_PROVIDER_PREFIX}${this.createId()}` as OpenAiCompatibleProviderId
     const name = draft.name.trim()
-    if (!name) throw new Error('Enter a profile name.')
+    if (!name) throw new Error('Enter a provider name.')
     if (name.length > 64) throw new Error('Profile names must be 64 characters or fewer.')
     const duplicate = (this.settings.openAiCompatibleProviders ?? [])
       .find((profile) => profile.id !== id && profile.name.toLocaleLowerCase() === name.toLocaleLowerCase())
-    if (duplicate) throw new Error('Choose a unique profile name.')
+    if (duplicate) throw new Error('Choose a unique provider name.')
     const baseUrl = normalizeOpenAiBaseUrl(draft.baseUrl)
     const defaultModel = draft.defaultModel.trim()
     if (!defaultModel) throw new Error('Enter or select a default model.')
@@ -296,7 +296,7 @@ export class ExecutableSettingsStore {
   updateOpenAiModels(id: OpenAiCompatibleProviderId, models: string[]): OpenAiCompatibleProfile {
     const profiles = [...(this.settings.openAiCompatibleProviders ?? [])]
     const index = profiles.findIndex((profile) => profile.id === id)
-    if (index === -1) throw new Error('That API profile no longer exists.')
+    if (index === -1) throw new Error('That API provider no longer exists.')
     profiles[index] = { ...profiles[index], models: cleanModels(models, profiles[index].defaultModel) }
     this.replace({ ...this.settings, openAiCompatibleProviders: profiles })
     return this.publicProfile(profiles[index])

@@ -180,8 +180,9 @@ function AiPicker() {
         <div className="ai-picker-menu">
           <div className="menu-section">Provider</div>
           <div className="menu-empty">
-            No AI CLI tools were found on this system.{' '}
+            No AI providers are available. Install a supported CLI or{' '}
             <Link to="/settings">Open Settings</Link>
+            {' '}to connect an API provider.
           </div>
         </div>
       )}
