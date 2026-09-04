@@ -5,6 +5,7 @@ import PageViewer from '../components/reader/PageViewer'
 import PageNav from '../components/reader/PageNav'
 import ChatSidebar from '../components/chat/ChatSidebar'
 import { usePanelResize } from '../hooks/usePanelResize'
+import { resolvedChatPath } from '../lib/readerNavigation'
 import { readerShortcut, type ReaderShortcutAction } from '../lib/readerShortcuts'
 import { useReaderStore } from '../state/readerStore'
 import { useUiStore } from '../state/uiStore'
@@ -67,15 +68,26 @@ export default function Reader() {
       state.activeThreadId === requestedThreadId &&
       state.doc
     ) return
-    void store.loadReader(id, requestedThreadId)
+    let cancelled = false
+    void store.loadReader(id, requestedThreadId).then(() => {
+      if (cancelled || requestedThreadId !== undefined) return
+      const resolved = resolvedChatPath(location.pathname, id, useReaderStore.getState())
+      if (resolved) navigate(resolved, { replace: true })
+    })
+    return () => {
+      cancelled = true
+      store.cancelReaderLoad()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId, threadId, location.key])
+  }, [docId, threadId, location.key, navigate])
 
   useEffect(() => {
     const id = Number(docId)
-    if (!Number.isInteger(id) || id <= 0 || store.documentId !== id || !store.activeThreadId) return
-    const expected = `/read/${id}/chat/${store.activeThreadId}`
-    if (location.pathname !== expected) navigate(expected, { replace: true })
+    // A new thread gets its URL after the first user turn is persisted. Explicit
+    // history routes stay authoritative while their asynchronous load completes.
+    if (location.pathname !== `/read/${id}/new`) return
+    const expected = resolvedChatPath(location.pathname, id, useReaderStore.getState())
+    if (expected) navigate(expected, { replace: true })
   }, [docId, location.pathname, navigate, store.activeThreadId, store.documentId])
 
   useEffect(() => {

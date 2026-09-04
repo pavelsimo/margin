@@ -546,3 +546,36 @@ describe('AI provider registry', () => {
     expect(useReaderStore.getState().aiProviders).toEqual(registry)
   })
 })
+
+describe('cancelled history navigation', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('ignores a pending history response after navigating back to the loaded chat', async () => {
+    let resolveHistory!: (messages: unknown[]) => void
+    let historyStarted!: () => void
+    const started = new Promise<void>((resolve) => { historyStarted = resolve })
+    const history = new Promise<unknown[]>((resolve) => { resolveHistory = resolve })
+    const previous = { ...thread, id: 98 }
+    const invoke = vi.fn((channel: string) => {
+      if (channel === 'document:get') return Promise.resolve(readyDocument)
+      if (channel === 'chat:list') return Promise.resolve([thread, previous])
+      if (channel === 'chat:history') { historyStarted(); return history }
+      if (channel === 'ai:getChoice') return Promise.resolve({ provider: 'claude', model: '', effort: '' })
+      if (channel === 'ai:getProviders') return Promise.resolve([])
+      return Promise.resolve(undefined)
+    })
+    vi.stubGlobal('window', { margin: { invoke } })
+    useReaderStore.setState({ activeRequestId: '', documentId: readyDocument.id, doc: readyDocument,
+      activeThreadId: previous.id, activeThread: previous, messages: [] })
+
+    const pending = useReaderStore.getState().loadReader(readyDocument.id, thread.id)
+    await started
+    useReaderStore.getState().cancelReaderLoad()
+    resolveHistory([{ id: 1, role: 'assistant', content: 'Stale history', contextText: '', mode: 'ask', isError: false, createdAt: 'now' }])
+    await pending
+
+    expect(useReaderStore.getState().activeThreadId).toBe(previous.id)
+    expect(useReaderStore.getState().messages).toEqual([])
+    expect(invoke).not.toHaveBeenCalledWith('page:get', expect.anything())
+  })
+})

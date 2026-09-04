@@ -115,6 +115,7 @@ interface ReaderStore {
   aiProviders: AiProviderInfo[] | null
 
   loadReader: (docId: number, threadId?: number | null) => Promise<void>
+  cancelReaderLoad: () => void
   startNewChat: (docId: number) => void
   loadPage: (number: number) => Promise<void>
   goToPage: (number: number) => void
@@ -401,6 +402,8 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
       void get().refreshAiProviders()
       await get().loadPage(1)
     },
+
+    cancelReaderLoad: () => { readerLoadSequence++ },
 
     startNewChat: (docId) => {
       readerLoadSequence++
