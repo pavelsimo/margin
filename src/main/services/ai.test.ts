@@ -16,6 +16,8 @@ vi.mock('node:child_process', async (importOriginal) => {
   } }
 })
 vi.mock('./executableSettings', () => ({
+  openAiApiKey: async () => '',
+  openAiProfile: () => undefined,
   executableInfo: (provider: string) => ({ customPath: '', effectiveCommand: provider, source: 'default' }),
 }))
 
