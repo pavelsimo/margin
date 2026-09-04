@@ -4,7 +4,7 @@ export interface AIResult {
   text: string
   error: string
   cancelled?: boolean
-  errorCode?: import("./types").ProviderErrorCode
+  errorCode?: import('./types').ProviderErrorCode
   retryAfter?: string
 }
 

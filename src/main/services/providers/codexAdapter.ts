@@ -3,7 +3,7 @@ import { StringDecoder } from 'node:string_decoder'
 import type { CliExecutableInfo } from '@shared/ipc'
 import { buildCommand, cliEnvironment, parseCodexStreamLine } from '../aiCore'
 import type { AIResult, RunOpts } from './legacy'
-import { FORCE_KILL_DELAY_MS, cancelledResult, timeoutResult, missingExecutableError, notExecutableError, friendlyError } from './processHelpers'
+import { stderrTail, FORCE_KILL_DELAY_MS, cancelledResult, timeoutResult, missingExecutableError, notExecutableError, friendlyError } from './processHelpers'
 import { createCliAdapter } from './cliAdapter'
 
 export function codexAdapter(executable: CliExecutableInfo) {
@@ -33,6 +33,7 @@ function runCodex(
     let completedResult: AIResult | null = null
     let protocolError = ''
     let settled = false
+    let launchError: AIResult | undefined
     let terminateTimer: NodeJS.Timeout | undefined
     let forceKillTimer: NodeJS.Timeout | undefined
 
@@ -52,6 +53,7 @@ function runCodex(
       resolve(result)
     }
     const terminate = () => {
+      if (forceKillTimer || settled) return
       proc.kill('SIGTERM')
       forceKillTimer = setTimeout(() => proc.kill('SIGKILL'), FORCE_KILL_DELAY_MS)
       forceKillTimer.unref()
@@ -74,6 +76,7 @@ function runCodex(
     const abort = () => interrupt('cancelled')
 
     const consumeLine = (line: string) => {
+      if (completedResult || settled) return
       let message: Record<string, unknown>
       try {
         message = JSON.parse(line) as Record<string, unknown>
@@ -85,7 +88,7 @@ function runCodex(
         protocolError = typeof detail === 'string' ? detail : 'Codex app-server returned an error.'
         return terminate()
       }
-      if (message.id === 1 && message.result) {
+      if (!terminal && message.id === 1 && message.result) {
         send({ method: 'initialized', params: {} })
         send({
           method: 'thread/start',
@@ -100,7 +103,7 @@ function runCodex(
         })
         return
       }
-      if (message.id === 2 && message.result && typeof message.result === 'object') {
+      if (!terminal && message.id === 2 && message.result && typeof message.result === 'object') {
         const thread = (message.result as Record<string, unknown>).thread
         if (!thread || typeof thread !== 'object' || typeof (thread as Record<string, unknown>).id !== 'string') {
           protocolError = 'Codex app-server did not return a thread ID.'
@@ -133,12 +136,12 @@ function runCodex(
         streamedText += event.delta.text
         opts.onDelta?.(event.delta.text)
       }
-      if (event.completed) {
+      if (event.completed && event.completed.status !== 'inProgress') {
         const authoritative = (event.completed.finalText || streamedText).trim()
+        if (terminal === 'timeout') return shutdownAfterTurn(timeoutResult(label, timeout, streamedText))
         if (event.completed.status === 'interrupted' || terminal === 'cancelled') {
           return shutdownAfterTurn(cancelledResult(streamedText))
         }
-        if (terminal === 'timeout') return shutdownAfterTurn(timeoutResult(label, timeout))
         if (event.completed.status === 'failed') {
           return shutdownAfterTurn({ ok: false, text: '', error: friendlyError(label, event.completed.error || stderr) })
         }
@@ -163,17 +166,19 @@ function runCodex(
     opts.signal?.addEventListener('abort', abort, { once: true })
     proc.stdin.on('error', () => {})
     proc.stdout.on('data', consumeChunk)
-    proc.stderr.on('data', (chunk) => (stderr += chunk.toString()))
+    proc.stderr.on('data', (chunk) => (stderr = stderrTail(stderr, chunk)))
     proc.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'ENOENT') finish({ ok: false, text: '', error: missingExecutableError(label, executable) })
-      else if (err.code === 'EACCES') finish({ ok: false, text: '', error: notExecutableError(label, bin) })
-      else finish({ ok: false, text: '', error: friendlyError(label, String(err)) })
+      if (err.code === 'ENOENT') launchError = { ok: false, text: '', error: missingExecutableError(label, executable) }
+      else if (err.code === 'EACCES') launchError = { ok: false, text: '', error: notExecutableError(label, bin) }
+      else launchError = { ok: false, text: '', error: friendlyError(label, String(err)) }
+      if (proc.pid) terminate()
     })
     proc.on('close', (code) => {
+      if (launchError) return finish(launchError)
       stdoutBuffer += decoder.end()
       if (stdoutBuffer.trim()) consumeLine(stdoutBuffer)
       if (terminal === 'cancelled') return finish(cancelledResult(streamedText))
-      if (terminal === 'timeout') return finish(timeoutResult(label, timeout))
+      if (terminal === 'timeout') return finish(timeoutResult(label, timeout, streamedText))
       if (completedResult) return finish(completedResult)
       if (protocolError) return finish({ ok: false, text: '', error: friendlyError(label, protocolError) })
       finish({ ok: false, text: '', error: friendlyError(label, stderr || `process exited with code ${code}`) })

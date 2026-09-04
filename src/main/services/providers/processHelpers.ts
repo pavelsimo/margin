@@ -7,8 +7,8 @@ export function cancelledResult(text: string): AIResult {
   return { ok: false, text: text.trim(), error: '', cancelled: true }
 }
 
-export function timeoutResult(label: string, timeout: number): AIResult {
-  return { ok: false, text: '', error: `${label} didn't answer within ${timeout}s. Try again or ask something smaller.` }
+export function timeoutResult(label: string, timeout: number, text = ''): AIResult {
+  return { ok: false, text: text.trim(), errorCode: 'timeout', error: `${label} didn't answer within ${timeout}s. Try again or ask something smaller.` }
 }
 
 export function missingExecutableError(label: string, executable: CliExecutableInfo): string {
@@ -35,4 +35,9 @@ export function friendlyError(label: string, stderr: string): string {
     return `${label} isn't signed in. Run the CLI once in a terminal to sign in, then try again.`
   }
   return `${label} failed: ${detail}`
+}
+
+/** Keep only a bounded in-memory tail for classification; never log provider output. */
+export function stderrTail(previous: string, chunk: Buffer): string {
+  return (previous + chunk.toString()).slice(-8_192)
 }

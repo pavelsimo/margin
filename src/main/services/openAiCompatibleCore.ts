@@ -17,6 +17,8 @@ export interface OpenAiRunResult {
   text: string
   error: string
   cancelled?: boolean
+  errorCode?: import('./providers/types').ProviderErrorCode
+  retryAfter?: string
 }
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
@@ -173,11 +175,15 @@ export async function runOpenAiChat(
       signal: controller.signal,
     })
     if (!response.ok) {
-      return { ok: false, text: '', error: `${profile.name} returned HTTP ${response.status}: ${await responseError(response)}` }
+      return { ok: false, text: '', error: `${profile.name} returned HTTP ${response.status}: ${await responseError(response)}`,
+        ...(response.status === 429 ? { errorCode: 'rate_limited' as const, retryAfter: response.headers.get('retry-after') ?? undefined } : {}),
+      }
     }
     const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
     if (!contentType.includes('text/event-stream')) {
       const text = parseOpenAiJsonResponse(await response.json())
+      if (opts.signal?.aborted) return { ok: false, text: '', error: '', cancelled: true }
+      if (timedOut) return { ok: false, text: '', error: 'Request timed out.', errorCode: 'timeout' }
       return text
         ? { ok: true, text, error: '' }
         : { ok: false, text: '', error: `${profile.name} returned an empty response.` }
@@ -195,7 +201,7 @@ export async function runOpenAiChat(
       buffer += decoder.decode(chunk.value, { stream: !done })
       buffer = buffer.replace(/\r\n/g, '\n')
       let boundary = buffer.indexOf('\n\n')
-      while (boundary !== -1) {
+      while (boundary !== -1 && !opts.signal?.aborted && !timedOut) {
         const event = parseOpenAiSseEvent(buffer.slice(0, boundary))
         buffer = buffer.slice(boundary + 2)
         if (event.error) return { ok: false, text: '', error: `${profile.name} failed: ${event.error}` }
@@ -203,11 +209,11 @@ export async function runOpenAiChat(
           streamedText += event.text
           opts.onDelta?.(event.text)
         }
-        if (event.done) done = true
+        if (event.done) { done = true; buffer = ''; break }
         boundary = buffer.indexOf('\n\n')
       }
     }
-    if (buffer.trim()) {
+    if (buffer.trim() && !opts.signal?.aborted && !timedOut) {
       const event = parseOpenAiSseEvent(buffer)
       if (event.error) return { ok: false, text: '', error: `${profile.name} failed: ${event.error}` }
       if (event.text) {
@@ -217,7 +223,7 @@ export async function runOpenAiChat(
     }
     if (opts.signal?.aborted) return { ok: false, text: streamedText.trim(), error: '', cancelled: true }
     if (timedOut) {
-      return { ok: false, text: '', error: `${profile.name} didn't answer within ${opts.timeout}s. Try again or ask something smaller.` }
+      return { ok: false, text: streamedText.trim(), errorCode: 'timeout', error: `${profile.name} didn't answer within ${opts.timeout}s. Try again or ask something smaller.` }
     }
     const text = streamedText.trim()
     return text
@@ -226,12 +232,16 @@ export async function runOpenAiChat(
   } catch (error) {
     if (opts.signal?.aborted) return { ok: false, text: streamedText.trim(), error: '', cancelled: true }
     if (timedOut) {
-      return { ok: false, text: '', error: `${profile.name} didn't answer within ${opts.timeout}s. Try again or ask something smaller.` }
+      return { ok: false, text: streamedText.trim(), errorCode: 'timeout', error: `${profile.name} didn't answer within ${opts.timeout}s. Try again or ask something smaller.` }
     }
     const detail = error instanceof Error ? error.message : String(error)
     return { ok: false, text: '', error: `${profile.name} failed: ${detail}` }
   } finally {
     clearTimeout(timer)
+    if (activeReader) {
+      await activeReader.cancel().catch(() => {})
+      activeReader.releaseLock()
+    }
     opts.signal?.removeEventListener('abort', abort)
   }
 }

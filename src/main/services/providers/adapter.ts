@@ -45,7 +45,7 @@ export function managedAdapter(
           const result = await run({ ...captured, onEvent: (event) => {
             if (!finished && !signal.aborted) captured.onEvent?.(event)
           } })
-          if (result.cancelled) return { status: 'cancelled', text: result.text }
+          if (result.cancelled || signal.aborted) return { status: 'cancelled', text: result.text }
           if (result.ok) return { status: 'completed', text: result.text }
           return { status: 'failed', text: result.text, error: {
             ...normalizeError(result.error, result.errorCode), ...(result.retryAfter ? { retryAfter: result.retryAfter } : {}),

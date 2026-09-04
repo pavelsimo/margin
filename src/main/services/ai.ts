@@ -5,6 +5,7 @@ import type { AiProviderId } from '@shared/constants'
 import type { AiChoice } from '@shared/ipc'
 import { executableInfo, openAiApiKey, openAiProfile } from './executableSettings'
 import { createProviderRegistry } from './providers/registry'
+import { executions, type ExecutionLease } from './executionCoordinator'
 import { normalizeError } from './providers/adapter'
 import type { AIResult, RunOpts } from './providers/legacy'
 import type { ProviderInput, ProviderResult, TaskKind } from './providers/types'
@@ -22,20 +23,26 @@ export function legacyResult(result: ProviderResult): AIResult {
   return { ok: false, text: result.text, error: result.error.message, errorCode: result.error.code }
 }
 
-export async function runPrompt(provider: AiProviderId, prompt: string, opts: RunOpts & { task?: TaskKind } = {}): Promise<AIResult> {
+export async function runPrompt(provider: AiProviderId, prompt: string, opts: RunOpts & { task?: TaskKind; execution?: ExecutionLease } = {}): Promise<AIResult> {
   const input: ProviderInput = { prompt, instructions: prompt, messages: [], attachments: opts.imagePng
     ? [{ name: 'figure.png', mediaType: 'image/png', data: opts.imagePng }] : [] }
+  const lease = opts.execution ?? executions.begin({ requestId: randomUUID(), task: opts.task ?? 'chat' })
+  const signal = opts.signal ? AbortSignal.any([opts.signal, lease.signal]) : lease.signal
+  const deadline = Date.now() + (opts.timeout ?? AI_TIMEOUT) * 1_000
   let captured: CapturedProvider | undefined
   try {
-    if (opts.signal?.aborted) return { ok: false, text: '', error: '', cancelled: true }
+    if (signal.aborted) return { ok: false, text: '', error: '', cancelled: true }
     captured = await captureProvider({ provider, model: opts.model ?? '', effort: opts.effort ?? '' })
-    return legacyResult(await captured.adapter.execute({ ...input, requestId: randomUUID(), task: opts.task ?? 'chat',
-      profile: captured.profile, deadline: Date.now() + (opts.timeout ?? AI_TIMEOUT) * 1_000,
-      signal: opts.signal ?? new AbortController().signal, onEvent: (event) => opts.onDelta?.(event.text),
-    }))
+    lease.captureProfile(captured.profile)
+    const result = await captured.adapter.execute({ ...input, requestId: lease.scope.requestId, task: opts.task ?? 'chat',
+      profile: captured.profile, deadline,
+      signal, onEvent: (event) => { if (lease.valid) opts.onDelta?.(event.text) },
+    })
+    if (!lease.valid) return { ok: false, text: '', error: '', cancelled: true }
+    return legacyResult(result)
   } catch (error) {
     return legacyResult({ status: 'failed', text: '', error: normalizeError(String(error)) })
   } finally {
-    await captured?.adapter.dispose()
+    try { await captured?.adapter.dispose() } finally { if (!opts.execution) lease.finish() }
   }
 }
