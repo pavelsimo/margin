@@ -39,3 +39,8 @@ describe('chat answer actions', () => {
     expect(user).not.toContain('msg-answer-footer')
   })
 })
+
+it.each(['cancelled', 'timed_out'] as const)('labels persisted %s answers as incomplete', (outcome) => {
+  const html = renderToStaticMarkup(<MessageRow m={{ ...assistant, outcome }} />)
+  expect(html).toContain(outcome === 'cancelled' ? 'Stopped — incomplete' : 'Timed out — incomplete')
+})

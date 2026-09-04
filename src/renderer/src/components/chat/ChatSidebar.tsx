@@ -76,6 +76,11 @@ function AssistantMessage({ m }: { m: DisplayMessage }) {
             </ReactMarkdown>
           </div>
         )}
+        {completed && (m.outcome === 'cancelled' || m.outcome === 'timed_out') && (
+          <div className="msg-answer-footer" role="status">
+            {m.outcome === 'cancelled' ? 'Stopped — incomplete' : 'Timed out — incomplete'}
+          </div>
+        )}
         {completed && time && (
           <div className="msg-answer-footer">
             <button type="button" className="msg-copy" onClick={() => void onCopy()} aria-label={copyLabel} title={copyLabel}>

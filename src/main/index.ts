@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron'
+import { executions } from './services/executionCoordinator'
 import { join } from 'node:path'
 import type { AppCommand, AppWindowState } from '@shared/ipc'
 import { installMarginProtocol, registerMarginScheme } from './protocol'
@@ -223,4 +224,18 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+// Let provider interruption and file cleanup finish before Electron exits.
+let shutdownStarted = false
+let shutdownFinished = false
+app.on('before-quit', (event) => {
+  if (shutdownFinished) return
+  event.preventDefault()
+  if (shutdownStarted) return
+  shutdownStarted = true
+  void executions.shutdown().finally(() => {
+    shutdownFinished = true
+    app.quit()
+  })
 })

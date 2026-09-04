@@ -43,6 +43,7 @@ export interface PageData {
 }
 
 export interface UiMessage {
+  outcome?: import('./models').MessageOutcome
   id: number
   role: 'user' | 'assistant'
   content: string // persisted source content; assistant math is normalized in the renderer

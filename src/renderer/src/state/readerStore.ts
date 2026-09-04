@@ -33,6 +33,7 @@ import { normalizeMath } from '../lib/normalizeMath'
 import { cleanIpcError } from './libraryStore'
 
 export interface DisplayMessage {
+  outcome?: UiMessage['outcome']
   key: number
   role: 'user' | 'assistant'
   content: string
@@ -52,6 +53,7 @@ function displayRow(message: UiMessage, key?: number): DisplayMessage {
     content: message.role === 'user' ? message.content : normalizeMath(message.content),
     ctx: message.contextText.trim(),
     isError: message.isError,
+    outcome: message.outcome,
     rawContent: message.content,
     createdAt: message.createdAt,
   }
@@ -113,6 +115,7 @@ interface ReaderStore {
   aiProviders: AiProviderInfo[] | null
 
   loadReader: (docId: number, threadId?: number | null) => Promise<void>
+  cancelReaderLoad: () => void
   startNewChat: (docId: number) => void
   loadPage: (number: number) => Promise<void>
   goToPage: (number: number) => void
@@ -399,6 +402,8 @@ export const useReaderStore = create<ReaderStore>((set, get) => {
       void get().refreshAiProviders()
       await get().loadPage(1)
     },
+
+    cancelReaderLoad: () => { readerLoadSequence++ },
 
     startNewChat: (docId) => {
       readerLoadSequence++

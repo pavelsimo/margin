@@ -1,47 +1,86 @@
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { appendFileSync, existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
 import { runPrompt } from './ai'
+import type { Provider } from '@shared/constants'
 
-let fakeBinDir = ''
-let fakeClaudeBin = ''
-
+const launches = vi.hoisted(() => [] as Array<{ command: string; args: string[]; cwd: string; spawnedAt?: number }>)
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return { ...actual, spawn: (command: string, args: string[], options: { cwd: string }) => {
+    launches.push({ command, args, cwd: options.cwd })
+    const launch = launches.at(-1)!
+    const child = actual.spawn(process.execPath, [resolve('src/main/services/__fixtures__/provider.cjs'), command, ...args], options)
+    child.once('spawn', () => { launch.spawnedAt = performance.now() })
+    return child
+  } }
+})
 vi.mock('./executableSettings', () => ({
-  executableInfo: () => ({ customPath: fakeClaudeBin, effectiveCommand: fakeClaudeBin, source: 'custom' }),
+  openAiApiKey: async () => '',
+  openAiProfile: () => undefined,
+  executableInfo: (provider: string) => ({ customPath: '', effectiveCommand: provider, source: 'default' }),
 }))
 
-// A stand-in Claude CLI that drains stdin, waits long enough for runPrompt's
-// cleanup to race ahead, then reports whether its working directory survived.
-// $PWD can silently fall back to the inherited value when getcwd fails at
-// shell startup, so probe by writing into the cwd instead: that fails with
-// ENOENT once the directory has been deleted.
-const FAKE_CLAUDE = `#!/bin/sh
-cat >/dev/null
-sleep 0.2
-if touch ./.cwd-probe 2>/dev/null; then
-  printf '{"type":"result","result":"cwd-ok"}\\n'
-else
-  printf '{"type":"result","result":"cwd-gone"}\\n'
-fi
-`
+for (const provider of ['claude', 'codex', 'antigravity'] as Provider[]) {
+  describe(`${provider} execution baseline`, () => {
+    it('decodes fragmented UTF-8 and preserves image workdir until exit', async () => {
+      const deltas: string[] = []
+      const result = await runPrompt(provider, 'cwd-probe', {
+        model: 'test-model', effort: 'low', imagePng: Buffer.from('image'), onDelta: (text) => deltas.push(text),
+      })
+      expect(result).toEqual({ ok: true, text: 'héllo world', error: '' })
+      expect(deltas.join('')).toBe('héllo world')
+      const launch = launches.at(-1)!
+      expect(existsSync(launch.cwd)).toBe(false)
+      if (provider === 'codex') expect(launch.args).toEqual(['app-server'])
+      else expect(launch.args).toContain('--model')
+    })
 
-beforeAll(async () => {
-  fakeBinDir = await mkdtemp(join(tmpdir(), 'margin-fake-cli-'))
-  fakeClaudeBin = join(fakeBinDir, 'claude')
-  await writeFile(fakeClaudeBin, FAKE_CLAUDE)
-  await chmod(fakeClaudeBin, 0o755)
-})
+    it('returns a single authoritative response', async () => {
+      const result = await runPrompt(provider, 'duplicate')
+      expect(result.text).toBe('héllo world')
+    })
 
-afterAll(async () => {
-  await rm(fakeBinDir, { recursive: true, force: true })
-})
+    it('reports an early process exit', async () => {
+      expect((await runPrompt(provider, 'early-exit')).ok).toBe(false)
+    })
 
-describe.skipIf(process.platform === 'win32')('runPrompt', () => {
-  it('keeps the temp workdir alive until the CLI process exits', async () => {
-    const result = await runPrompt('claude', 'hello')
-    expect(result.error).toBe('')
-    expect(result.ok).toBe(true)
-    expect(result.text).toBe('cwd-ok')
+    it('retains streamed text on stop and cleans up', async () => {
+      const controller = new AbortController()
+      const result = await runPrompt(provider, 'stop', {
+        signal: controller.signal, onDelta: (text) => { if (text.includes("world")) controller.abort() },
+      })
+      expect(result.cancelled).toBe(true)
+      expect(result.text).toBe('héllo world')
+      expect(existsSync(launches.at(-1)!.cwd)).toBe(false)
+    })
+
+    it('does not launch already-cancelled requests', async () => {
+      const count = launches.length
+      const result = await runPrompt(provider, 'hello', { signal: AbortSignal.abort() })
+      expect(result.cancelled).toBe(true)
+      expect(launches).toHaveLength(count)
+    })
+
+    it('records fixture timing when explicitly enabled', async () => {
+      if (!process.env.MARGIN_BENCHMARK) return
+      const samples = []
+      for (let i = 0; i < 5; i++) {
+        const start = performance.now()
+        let first = 0
+        await runPrompt(provider, 'timing', { onDelta: () => { first ||= performance.now() - start } })
+        const total = performance.now() - start
+        const startupMs = launches.at(-1)!.spawnedAt! - start
+        const controller = new AbortController()
+        let stop = 0
+        await runPrompt(provider, 'timing', { signal: controller.signal, onDelta: (text) => {
+          if (!text.includes("world")) return
+          stop = performance.now()
+          controller.abort()
+        } })
+        samples.push({ startupMs, firstTextMs: first, totalMs: total, cancellationMs: performance.now() - stop })
+      }
+      appendFileSync(process.env.MARGIN_BENCHMARK!, JSON.stringify({ provider, samples }) + '\n')
+    })
   })
-})
+}

@@ -35,7 +35,10 @@ export interface BlockRow {
   y1: number
 }
 
+export type MessageOutcome = 'completed' | 'cancelled' | 'timed_out' | 'failed'
+
 export interface ChatMessageRow {
+  outcome?: MessageOutcome
   id: number
   thread_id: number
   document_id: number
