@@ -137,3 +137,19 @@ describe('OpenAI-compatible requests', () => {
     expect(result.error).toContain("Ollama didn't answer within 0.01s")
   })
 })
+
+it('ignores events after DONE and releases the response reader', async () => {
+  const response = streamingResponse([
+    'data: {"choices":[{"delta":{"content":"answer"}}]}\n\ndata: [DONE]\n\n',
+    'data: {"choices":[{"delta":{"content":"late"}}]}\n\n',
+  ])
+  const result = await runOpenAiChat(profile, 'hello', { model: 'm', timeout: 1 }, async () => response)
+  expect(result.text).toBe('answer')
+  expect(response.body?.locked).toBe(false)
+})
+it('preserves provider retry information on rate limiting', async () => {
+  const result = await runOpenAiChat(profile, 'hello', { model: 'm', timeout: 1 }, async () => Response.json(
+    { error: { message: 'rate limited' } }, { status: 429, headers: { 'retry-after': '30' } },
+  ))
+  expect(result).toMatchObject({ ok: false, errorCode: 'rate_limited', retryAfter: '30' })
+})

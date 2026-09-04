@@ -41,3 +41,8 @@ export interface ProviderAdapter {
   execute(request: ProviderRequest): Promise<ProviderResult>
   dispose(): Promise<void>
 }
+
+export interface ProviderControls {
+  signal?: AbortSignal
+  deadline?: number
+}

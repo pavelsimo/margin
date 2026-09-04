@@ -33,6 +33,10 @@ export function migrateChatThreads(database: Database.Database): void {
     `)
 
     if (!hasTable(database, 'chatmessage')) return
+    if (!hasColumn(database, 'chatmessage', 'outcome')) {
+      database.exec("ALTER TABLE chatmessage ADD COLUMN outcome TEXT NOT NULL DEFAULT 'completed' CHECK (outcome IN ('completed', 'cancelled', 'timed_out', 'failed'))")
+      if (hasColumn(database, 'chatmessage', 'mode')) database.exec("UPDATE chatmessage SET outcome = 'failed' WHERE mode = 'error'")
+    }
     if (!hasColumn(database, 'chatmessage', 'thread_id')) {
       database.exec('ALTER TABLE chatmessage ADD COLUMN thread_id INTEGER REFERENCES chatthread(id)')
     }

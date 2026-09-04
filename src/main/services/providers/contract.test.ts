@@ -128,3 +128,16 @@ it.each([
 ])('normalizes %s', (text, code) => {
   expect(normalizeError(text).code).toBe(code)
 })
+
+it('does not treat an in-progress Codex notification as completion', async () => {
+  const adapter = factories.codex()
+  expect(await adapter.execute(request('in-progress'))).toEqual({ status: 'completed', text: 'héllo world' })
+  await adapter.dispose()
+})
+
+it.each(Object.keys(factories))('cleans up %s when the stream consumer throws', async (name) => {
+  const adapter = factories[name]()
+  const result = await adapter.execute(request('hello', { onEvent() { throw new Error('consumer gone') } }))
+  expect(result).toMatchObject({ status: 'failed', error: { code: 'transport' } })
+  await adapter.dispose()
+})

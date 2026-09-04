@@ -3,6 +3,7 @@ import { rmSync } from 'node:fs'
 import type { DocumentRow } from '@shared/models'
 import type { PaperRow } from '@shared/ipc'
 import { db, parseDbDate, utcnowSql, USER_ID } from '../db'
+import { executions } from '../services/executionCoordinator'
 import { documentDir } from '../paths'
 import { pageImageUrl } from '../protocol'
 
@@ -74,6 +75,7 @@ export function deleteDocument(docId: number): void {
     | { id: number; user_id: number }
     | undefined
   if (!doc || doc.user_id !== USER_ID) return
+  executions.invalidateDocument(docId)
   db.transaction(() => {
     db.prepare('DELETE FROM block WHERE page_id IN (SELECT id FROM page WHERE document_id = ?)').run(docId)
     db.prepare('DELETE FROM page WHERE document_id = ?').run(docId)

@@ -50,3 +50,21 @@ describe('migrateChatThreads', () => {
     close()
   })
 })
+
+it('backfills old errors once and preserves new incomplete outcomes on subsequent migrations', () => {
+  const { database, close } = sqliteTestDatabase()
+  database.exec(`
+    CREATE TABLE user (id INTEGER PRIMARY KEY);
+    CREATE TABLE document (id INTEGER PRIMARY KEY);
+    CREATE TABLE chatmessage (id INTEGER PRIMARY KEY, thread_id INTEGER, mode TEXT);
+    INSERT INTO chatmessage VALUES (1, 10, 'error'), (2, 10, 'ask');
+  `)
+  // Supply the legacy columns referenced by the thread migration, without legacy rows to attach.
+  database.exec("ALTER TABLE chatmessage ADD COLUMN document_id INTEGER; ALTER TABLE chatmessage ADD COLUMN user_id INTEGER; ALTER TABLE chatmessage ADD COLUMN created_at TEXT; ALTER TABLE chatmessage ADD COLUMN role TEXT; ALTER TABLE chatmessage ADD COLUMN content TEXT;")
+  migrateChatThreads(database)
+  expect(database.prepare('SELECT outcome FROM chatmessage ORDER BY id').all()).toEqual([{ outcome: 'failed' }, { outcome: 'completed' }])
+  database.prepare("UPDATE chatmessage SET outcome = 'cancelled' WHERE id = 2").run()
+  migrateChatThreads(database)
+  expect(database.prepare('SELECT outcome FROM chatmessage WHERE id = 2').get()).toEqual({ outcome: 'cancelled' })
+  close()
+})

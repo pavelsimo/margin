@@ -28,3 +28,17 @@ it('captures profile and model before asynchronous credential resolution', async
   expect(JSON.stringify(captured.profile)).not.toContain('original-key')
   await captured.adapter.dispose()
 })
+
+it.each(['abort', 'deadline'])('bounds credential resolution on %s', async (reason) => {
+  let unlock!: (key: string) => void
+  const key = new Promise<string>((resolve) => { unlock = resolve })
+  const profile = { id: 'openai-compatible:one', name: 'Fixture', baseUrl: 'http://unused', defaultModel: 'model', models: [], hasApiKey: true, credentialProtection: 'os' } satisfies OpenAiCompatibleProfile
+  const registry = createProviderRegistry({ executableInfo: vi.fn(), openAiProfile: () => profile, openAiApiKey: () => key, fetch: vi.fn() })
+  const controller = new AbortController()
+  const pending = registry.resolve({ provider: profile.id, model: '', effort: '' }, {
+    signal: controller.signal, deadline: Date.now() + (reason === 'deadline' ? 10 : 1_000),
+  })
+  if (reason === 'abort') controller.abort()
+  await expect(pending).rejects.toThrow(reason === 'abort' ? 'cancelled' : 'timed out')
+  unlock('key')
+})

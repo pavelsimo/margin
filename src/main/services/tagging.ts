@@ -1,6 +1,8 @@
 // AI-generated topic tags for papers. Port of margin/tagging.py.
 
 import type { DocumentRow } from '@shared/models'
+import { randomUUID } from 'node:crypto'
+import { executions, type ExecutionLease } from './executionCoordinator'
 import { db, USER_ID } from '../db'
 import * as ai from './ai'
 import { backgroundAiChoice } from './chat'
@@ -65,6 +67,11 @@ function splitTags(tags: string): string[] {
 
 /** Generate and persist tags unless the document was tagged or deleted concurrently. */
 export async function generateDocumentTags(docId: number): Promise<TaggingResult> {
+  const lease = executions.begin({ requestId: randomUUID(), task: 'tagging', documentId: docId })
+  try { return await generateTags(docId, lease) } finally { lease.finish() }
+}
+
+async function generateTags(docId: number, lease: ExecutionLease): Promise<TaggingResult> {
   const document = db.prepare('SELECT * FROM document WHERE id = ?').get(docId) as DocumentRow | undefined
   if (!document || document.user_id !== USER_ID) {
     return { ok: false, tags: [], error: 'This paper no longer exists.', providerFailed: false }
@@ -74,7 +81,8 @@ export async function generateDocumentTags(docId: number): Promise<TaggingResult
   const vocabulary = existingVocabulary()
   const prompt = buildPrompt(document)
   const choice = backgroundAiChoice()
-  const response = await ai.runPrompt(choice.provider, prompt, { model: choice.model, effort: choice.effort })
+  const response = await ai.runPrompt(choice.provider, prompt, { model: choice.model, effort: choice.effort, task: 'tagging', execution: lease })
+  if (!lease.valid) return { ok: false, tags: [], error: 'This tagging request is no longer active.', providerFailed: false }
   if (!response.ok) return { ok: false, tags: [], error: response.error, providerFailed: true }
   let tags: string[]
   try {

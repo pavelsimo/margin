@@ -8,13 +8,13 @@ import { createProviderRegistry } from './providers/registry'
 import { executions, type ExecutionLease } from './executionCoordinator'
 import { normalizeError } from './providers/adapter'
 import type { AIResult, RunOpts } from './providers/legacy'
-import type { ProviderInput, ProviderResult, TaskKind } from './providers/types'
+import type { ProviderControls, ProviderInput, ProviderResult, TaskKind } from './providers/types'
 
 export { buildCommand, parseClaudeStreamLine, parseCodexStreamLine } from './aiCore'
 export type { AIResult, RunOpts }
 export const AI_TIMEOUT = Number(process.env.AI_TIMEOUT || 180)
 const registry = createProviderRegistry({ executableInfo, openAiApiKey, openAiProfile, fetch: (input, init) => net.fetch(input instanceof URL ? input.toString() : input, init) })
-export const captureProvider = (choice: AiChoice) => registry.resolve(choice)
+export const captureProvider = (choice: AiChoice, controls?: ProviderControls) => registry.resolve(choice, controls)
 export type CapturedProvider = Awaited<ReturnType<typeof captureProvider>>
 
 export function legacyResult(result: ProviderResult): AIResult {
@@ -32,7 +32,7 @@ export async function runPrompt(provider: AiProviderId, prompt: string, opts: Ru
   let captured: CapturedProvider | undefined
   try {
     if (signal.aborted) return { ok: false, text: '', error: '', cancelled: true }
-    captured = await captureProvider({ provider, model: opts.model ?? '', effort: opts.effort ?? '' })
+    captured = await captureProvider({ provider, model: opts.model ?? '', effort: opts.effort ?? '' }, { signal, deadline })
     lease.captureProfile(captured.profile)
     const result = await captured.adapter.execute({ ...input, requestId: lease.scope.requestId, task: opts.task ?? 'chat',
       profile: captured.profile, deadline,
@@ -41,6 +41,7 @@ export async function runPrompt(provider: AiProviderId, prompt: string, opts: Ru
     if (!lease.valid) return { ok: false, text: '', error: '', cancelled: true }
     return legacyResult(result)
   } catch (error) {
+    if (signal.aborted) return { ok: false, text: '', error: '', cancelled: true }
     return legacyResult({ status: 'failed', text: '', error: normalizeError(String(error)) })
   } finally {
     try { await captured?.adapter.dispose() } finally { if (!opts.execution) lease.finish() }

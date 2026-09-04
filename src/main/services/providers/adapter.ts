@@ -38,13 +38,18 @@ export function managedAdapter(
       const signal = AbortSignal.any([request.signal, controller.signal])
       const captured = { ...request, profile: { ...request.profile }, signal }
       let finished = false
+      let deliveryFailed = false
       const work = Promise.resolve().then(async (): Promise<ProviderResult> => {
         if (signal.aborted) return { status: 'cancelled', text: '' }
         if (captured.deadline <= Date.now()) return { status: 'failed', text: '', error: normalizeError('', 'timeout') }
         try {
           const result = await run({ ...captured, onEvent: (event) => {
-            if (!finished && !signal.aborted) captured.onEvent?.(event)
+            if (!finished && !signal.aborted) {
+              try { captured.onEvent?.(event) }
+              catch { deliveryFailed = true; controller.abort() }
+            }
           } })
+          if (deliveryFailed) return { status: 'failed', text: result.text, error: normalizeError('', 'transport') }
           if (result.cancelled || signal.aborted) return { status: 'cancelled', text: result.text }
           if (result.ok) return { status: 'completed', text: result.text }
           return { status: 'failed', text: result.text, error: {

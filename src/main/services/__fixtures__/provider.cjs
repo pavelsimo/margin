@@ -28,6 +28,7 @@ function answer(prompt) {
       ? JSON.stringify({ method: 'item/agentMessage/delta', params: { itemId: 'answer', delta: text } }) + '\n'
       : text
   if (provider === 'codex') {
+    if (prompt.includes('in-progress')) emit({ method: 'turn/completed', params: { turn: { status: 'inProgress' } } })
     emit({ method: 'item/started', params: { item: { id: 'answer', type: 'agentMessage', phase: 'final_answer' } } })
   }
   const bytes = Buffer.from(delta)
@@ -43,7 +44,10 @@ function answer(prompt) {
     setTimeout(() => {
       if (provider === 'claude') {
         emit({ type: 'result', result: text })
-        if (prompt.includes('duplicate')) emit({ type: 'result', result: text })
+        if (prompt.includes('duplicate')) {
+          emit({ type: 'result', result: 'late result must be ignored' })
+          emit({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'late' } } })
+        }
       } else if (provider === 'codex') {
         emit({ method: 'turn/completed', params: { turn: { status: 'completed', items: [
           { type: 'agentMessage', phase: 'final_answer', text },

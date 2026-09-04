@@ -33,6 +33,7 @@ import { normalizeMath } from '../lib/normalizeMath'
 import { cleanIpcError } from './libraryStore'
 
 export interface DisplayMessage {
+  outcome?: UiMessage['outcome']
   key: number
   role: 'user' | 'assistant'
   content: string
@@ -52,6 +53,7 @@ function displayRow(message: UiMessage, key?: number): DisplayMessage {
     content: message.role === 'user' ? message.content : normalizeMath(message.content),
     ctx: message.contextText.trim(),
     isError: message.isError,
+    outcome: message.outcome,
     rawContent: message.content,
     createdAt: message.createdAt,
   }

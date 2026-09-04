@@ -1,6 +1,6 @@
 // Chat domain logic. Port of margin/chat.py (normalize_math lives in the renderer).
 
-import type { ChatMessageRow, ChatThreadRow, DocumentRow } from '@shared/models'
+import type { ChatMessageRow, ChatThreadRow } from '@shared/models'
 import {
   PROVIDER_EFFORTS,
   PROVIDER_LABELS,
@@ -11,6 +11,7 @@ import {
   type AiProviderId,
 } from '@shared/constants'
 import type { AiChoice, AiProviderInfo, ChatThreadSummary, ClearAllChatsResult } from '@shared/ipc'
+import { executions } from './executionCoordinator'
 import { db, utcnowSql, USER_ID } from '../db'
 import { clearAllChatsForUser, NEW_CHAT_TITLE, resolveBackgroundChoice } from './chatCore'
 import {
@@ -22,7 +23,6 @@ import {
 } from './executableSettings'
 
 const DEFAULT_AI_PROVIDER = process.env.DEFAULT_AI_PROVIDER || 'claude'
-let historyGeneration = 0
 
 export function threadSummary(row: ChatThreadRow): ChatThreadSummary {
   return {
@@ -68,12 +68,13 @@ function insertMessage(args: {
   mode?: string
   scope?: string
   pageNumber?: number | null
+  outcome?: import('@shared/models').MessageOutcome
 }): ChatMessageRow {
   const now = utcnowSql()
   const info = db
     .prepare(
-      `INSERT INTO chatmessage (thread_id, document_id, user_id, role, content, context_text, mode, scope, page_number, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO chatmessage (thread_id, document_id, user_id, role, content, context_text, mode, scope, page_number, created_at, outcome)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       args.threadId,
@@ -86,6 +87,7 @@ function insertMessage(args: {
       args.scope ?? 'page',
       args.pageNumber ?? null,
       now,
+      args.outcome ?? (args.mode === 'error' ? 'failed' : 'completed'),
     )
   db.prepare('UPDATE chatthread SET updated_at = ? WHERE id = ?').run(now, args.threadId)
   return db.prepare('SELECT * FROM chatmessage WHERE id = ?').get(info.lastInsertRowid) as ChatMessageRow
@@ -138,6 +140,7 @@ export function addAssistantMessage(args: {
   mode?: string
   scope?: string
   pageNumber?: number | null
+  outcome?: import('@shared/models').MessageOutcome
 }): ChatMessageRow {
   requireThread(args.threadId, args.documentId)
   return insertMessage({ ...args, role: 'assistant' })
@@ -154,19 +157,14 @@ export function history(threadId: number, limit?: number): ChatMessageRow[] {
 /** Hard-delete every message in one owned thread while retaining the thread itself. */
 export function clearMessages(threadId: number): number {
   requireThread(threadId)
+  executions.invalidateThread(threadId)
   return db.prepare('DELETE FROM chatmessage WHERE thread_id = ?').run(threadId).changes
-}
-
-/** A process-local revision used to prevent requests started before a bulk clear from restoring history. */
-export function currentHistoryGeneration(): number {
-  return historyGeneration
 }
 
 /** Hard-delete every chat and its messages for the active user. */
 export function clearAllChats(): ClearAllChatsResult {
-  const changes = clearAllChatsForUser(db, USER_ID)
-  historyGeneration += 1
-  return changes
+  executions.invalidateChats()
+  return clearAllChatsForUser(db, USER_ID)
 }
 
 export function updateThreadTitle(threadId: number, title: string): ChatThreadRow | undefined {
@@ -175,44 +173,6 @@ export function updateThreadTitle(threadId: number, title: string): ChatThreadRo
     WHERE id = ? AND user_id = ? AND title = ?
   `).run(title, threadId, USER_ID, NEW_CHAT_TITLE)
   return result.changes ? getThread(threadId) : undefined
-}
-
-/** (context, scope_label): the selection wins over page text, which wins over the whole paper. */
-export function buildContext(
-  document: DocumentRow,
-  args: { scope: string; pageNumber: number | null; selectedText?: string },
-): [string, string] {
-  const selected = (args.selectedText ?? '').trim()
-  if (selected) return [selected, "the reader's highlighted selection"]
-  if (args.scope === 'page' && args.pageNumber !== null) {
-    const page = db
-      .prepare('SELECT text FROM page WHERE document_id = ? AND number = ?')
-      .get(document.id, args.pageNumber) as { text: string } | undefined
-    if (page?.text) return [page.text, `page ${args.pageNumber} of the paper`]
-  }
-  const pages = db
-    .prepare('SELECT text FROM page WHERE document_id = ? ORDER BY number ASC')
-    .all(document.id) as { text: string }[]
-  const fullText = pages.filter((p) => p.text).map((p) => p.text).join('\n\n')
-  return [fullText, `the paper "${document.title}"`]
-}
-
-/** (context, scope_label) when the selected block is a figure sent as an image attachment. */
-export function imageContext(pageNumber: number | null): [string, string] {
-  const where = pageNumber !== null ? ` on page ${pageNumber} of the paper` : ' in the paper'
-  const context =
-    `[The reader selected a figure${where}. It is attached as an image ` +
-    'rather than text, so study the image to answer.]'
-  return [context, `a figure${where}`]
-}
-
-/** (context, scope_label) for an exact page region sent as an image attachment. */
-export function regionImageContext(pageNumber: number): [string, string] {
-  const where = ` on page ${pageNumber} of the paper`
-  const context =
-    `[The reader selected an exact visual region${where}. It is attached as an image ` +
-    'rather than extracted text, so study everything visible in that region to answer.]'
-  return [context, `the reader's selected visual region${where}`]
 }
 
 export function aiChoice(): AiChoice {
